@@ -303,6 +303,9 @@ async fn send_email(state: State<'_, DbState>, to: String, subject: String, body
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Try root-level .env first (npm run tauri dev from workspace root), then local src-tauri/.env.
+    let _ = dotenvy::from_filename("../.env").or_else(|_| dotenvy::from_filename(".env"));
+
     let conn = Connection::open("emails.db").expect("Failed to open DB");
     init_db(&conn).expect("Failed to init DB");
 
