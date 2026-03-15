@@ -74,7 +74,7 @@ fn strip_confusable_chars(input: &str) -> String {
                     | '\u{034F}'
                     | '\u{061C}'
                     | '\u{180E}'
-                '\u{200B}'
+                    | '\u{200B}'
                     | '\u{200C}'
                     | '\u{200D}'
                     | '\u{200E}'
