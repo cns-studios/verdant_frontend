@@ -1,7 +1,7 @@
 use rusqlite::{Connection, Result};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Email {
     pub id: String,
     pub thread_id: String,
@@ -16,15 +16,14 @@ pub fn init_db(conn: &Connection) -> Result<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS emails (
             id TEXT PRIMARY KEY,
-            thread_id TEXT,
-            subject TEXT,
-            sender TEXT,
-            body_html TEXT,
-            date TEXT,
-            is_read INTEGER
+            thread_id TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            sender TEXT NOT NULL,
+            body_html TEXT NOT NULL,
+            date TEXT NOT NULL,
+            is_read INTEGER NOT NULL
         )",
-        (),
+        [],
     )?;
     Ok(())
 }
-
