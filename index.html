@@ -1,14 +1,934 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Verdant Mail</title>
-  </head>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verdant Mail</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;1,9..144,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+  :root {
+    --bg:          #f5f3ef;
+    --surface:     #eeece7;
+    --surface2:    #e7e4dd;
+    --border:      #d8d4cb;
+    --green:       #4a5e45;
+    --green-mid:   #5c7356;
+    --green-light: #7a9470;
+    --green-muted: #c8d5c4;
+    --green-pale:  #e8efe6;
+    --text:        #1e2119;
+    --text-mid:    #4a4d45;
+    --text-muted:  #8a8d84;
+    --white:       #fafaf8;
+    --accent:      #3d5239;
+    --shadow-lg:   0 8px 32px rgba(30,33,25,0.14), 0 2px 8px rgba(30,33,25,0.06);
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    overflow: hidden;
+  }
+
+  .sidebar {
+    width: 220px;
+    min-width: 220px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-header {
+    padding: 22px 20px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 18px;
+  }
+
+  .logo-mark {
+    width: 28px; height: 28px;
+    background: var(--green);
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .logo-mark svg { width: 14px; height: 14px; }
+
+  .logo-name {
+    font-family: 'Fraunces', serif;
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: -0.3px;
+    color: var(--text);
+  }
+
+  .compose-btn {
+    width: 100%;
+    padding: 9px 14px;
+    background: var(--green);
+    color: var(--white);
+    border: none;
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    transition: background 0.15s, transform 0.1s;
+  }
+
+  .compose-btn:hover { background: var(--accent); transform: translateY(-1px); }
+  .compose-btn:active { transform: translateY(0); }
+  .compose-btn svg { width: 13px; height: 13px; opacity: 0.9; }
+
+  .sidebar-section {
+    padding: 14px 12px 6px;
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  .section-label {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: 0 8px;
+    margin-bottom: 4px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 10px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 13.5px;
+    color: var(--text-mid);
+    transition: background 0.12s, color 0.12s;
+    margin-bottom: 1px;
+    user-select: none;
+  }
+
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active { background: var(--green-pale); color: var(--green); font-weight: 500; }
+  .nav-item svg { width: 14px; height: 14px; opacity: 0.7; flex-shrink: 0; }
+  .nav-item.active svg { opacity: 1; }
+
+  .nav-badge {
+    margin-left: auto;
+    background: var(--green);
+    color: white;
+    font-size: 10px;
+    font-weight: 500;
+    padding: 1px 6px;
+    border-radius: 20px;
+    line-height: 16px;
+  }
+
+  .sidebar-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 10px 12px;
+  }
+
+  .sidebar-footer {
+    padding: 14px 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .user-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 8px;
+    transition: background 0.12s;
+  }
+
+  .user-row:hover { background: var(--surface2); }
+
+  .avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--green-mid);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: white;
+    flex-shrink: 0;
+  }
+
+  .user-info { flex: 1; min-width: 0; }
+  .user-name { font-size: 12.5px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .user-email { font-size: 10.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .email-list-pane {
+    width: 320px;
+    min-width: 320px;
+    background: var(--white);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .list-header {
+    padding: 18px 18px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .list-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .list-title {
+    font-family: 'Fraunces', serif;
+    font-size: 18px;
+    font-weight: 400;
+    letter-spacing: -0.4px;
+    color: var(--text);
+  }
+
+  .list-count {
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--surface2);
+    padding: 2px 8px;
+    border-radius: 20px;
+  }
+
+  .search-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 11px;
+    margin-bottom: 10px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .search-bar:focus-within {
+    border-color: var(--green-light);
+    box-shadow: 0 0 0 2px rgba(74,94,69,0.1);
+  }
+
+  .search-bar svg { width: 13px; height: 13px; color: var(--text-muted); flex-shrink: 0; }
+
+  .search-bar input {
+    flex: 1;
+    border: none;
+    background: none;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    color: var(--text);
+    outline: none;
+  }
+
+  .search-bar input::placeholder { color: var(--text-muted); }
+
+  .filter-chips {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+
+  .filter-chips::-webkit-scrollbar { display: none; }
+
+  .chip {
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    white-space: nowrap;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-mid);
+    transition: all 0.12s;
+  }
+
+  .chip:hover { background: var(--surface2); }
+  .chip.active { background: var(--green-pale); border-color: var(--green-muted); color: var(--green); font-weight: 500; }
+
+  .email-list {
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .email-item {
+    padding: 13px 18px;
+    border-bottom: 1px solid var(--surface);
+    cursor: pointer;
+    transition: background 0.1s;
+    position: relative;
+  }
+
+  .email-item:hover { background: var(--surface); }
+  .email-item.active { background: var(--green-pale); border-left: 2px solid var(--green); }
+  .email-item.unread .email-sender { font-weight: 600; color: var(--text); }
+  .email-item.unread .email-subject { font-weight: 500; }
+
+  .unread-dot {
+    position: absolute;
+    top: 50%; left: 8px;
+    transform: translateY(-50%);
+    width: 5px; height: 5px;
+    background: var(--green);
+    border-radius: 50%;
+  }
+
+  .email-item-inner { padding-left: 6px; }
+
+  .email-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 3px;
+  }
+
+  .email-sender { font-size: 13px; color: var(--text-mid); }
+  .email-time { font-size: 11px; color: var(--text-muted); }
+  .email-subject { font-size: 13px; color: var(--text); margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .email-preview { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.4; }
+  .email-tags { display: flex; gap: 4px; margin-top: 6px; }
+  .email-tag { font-size: 10px; padding: 2px 7px; border-radius: 4px; background: var(--green-pale); color: var(--green-mid); border: 1px solid var(--green-muted); }
+
+  .reading-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--white);
+  }
+
+  .reading-header {
+    padding: 20px 32px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .reading-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+
+  .icon-btn {
+    width: 32px; height: 32px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: transparent;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all 0.12s;
+  }
+
+  .icon-btn:hover { background: var(--surface); color: var(--text); }
+  .icon-btn svg { width: 14px; height: 14px; }
+
+  .reading-subject {
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    font-weight: 400;
+    letter-spacing: -0.5px;
+    color: var(--text);
+    margin-bottom: 14px;
+    line-height: 1.3;
+  }
+
+  .reading-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .meta-avatar {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--green-mid), var(--green-light));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600; color: white;
+    flex-shrink: 0;
+  }
+
+  .meta-info { flex: 1; }
+  .meta-from { font-size: 13.5px; font-weight: 500; color: var(--text); }
+  .meta-to { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+  .meta-date { font-size: 12px; color: var(--text-muted); }
+
+  .reading-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 28px 32px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .email-body-text {
+    font-size: 14.5px;
+    line-height: 1.75;
+    color: var(--text-mid);
+    max-width: 620px;
+  }
+
+  .email-body-text p { margin-bottom: 16px; }
+  .email-body-text p:last-child { margin-bottom: 0; }
+
+  .highlight {
+    background: var(--green-pale);
+    border-left: 3px solid var(--green-light);
+    padding: 12px 16px;
+    border-radius: 0 6px 6px 0;
+    margin: 20px 0;
+    font-style: italic;
+    color: var(--text);
+  }
+
+  .thread-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 24px 0;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  .thread-divider::before, .thread-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .reply-bar {
+    padding: 16px 32px;
+    border-top: 1px solid var(--border);
+  }
+
+  .reply-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: text;
+    transition: border-color 0.15s;
+  }
+
+  .reply-box:hover { border-color: var(--green-light); }
+  .reply-box span { font-size: 13px; color: var(--text-muted); flex: 1; }
+
+  .reply-send-btn {
+    padding: 7px 14px;
+    background: var(--green);
+    color: white;
+    border: none;
+    border-radius: 7px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 6px;
+    transition: background 0.15s;
+  }
+
+  .reply-send-btn:hover { background: var(--accent); }
+  .reply-send-btn svg { width: 12px; height: 12px; }
+
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(30,33,25,0.35);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding: 24px;
+    z-index: 100;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+
+  .compose-modal {
+    width: 480px;
+    background: var(--white);
+    border-radius: 14px;
+    box-shadow: var(--shadow-lg), 0 0 0 1px var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: translateY(16px) scale(0.98);
+    transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .modal-overlay.open .compose-modal { transform: translateY(0) scale(1); }
+
+  .modal-header {
+    padding: 14px 18px;
+    background: var(--green);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .modal-title {
+    font-family: 'Fraunces', serif;
+    font-size: 14px;
+    font-weight: 400;
+    color: white;
+    letter-spacing: -0.2px;
+  }
+
+  .modal-close {
+    width: 24px; height: 24px;
+    border-radius: 6px;
+    border: none;
+    background: rgba(255,255,255,0.15);
+    color: white;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    line-height: 1;
+    transition: background 0.12s;
+  }
+
+  .modal-close:hover { background: rgba(255,255,255,0.25); }
+
+  .modal-fields { padding: 0 18px; }
+
+  .modal-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--surface2);
+  }
+
+  .modal-field label { font-size: 12px; color: var(--text-muted); width: 36px; flex-shrink: 0; }
+
+  .modal-field input {
+    flex: 1;
+    border: none;
+    background: none;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13.5px;
+    color: var(--text);
+    outline: none;
+  }
+
+  .modal-field input::placeholder { color: var(--text-muted); }
+
+  .modal-body { margin: 4px 18px 0; min-height: 140px; }
+
+  .modal-body textarea {
+    width: 100%;
+    min-height: 140px;
+    border: none;
+    background: none;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13.5px;
+    color: var(--text);
+    outline: none;
+    resize: none;
+    line-height: 1.65;
+    padding: 12px 0;
+  }
+
+  .modal-body textarea::placeholder { color: var(--text-muted); }
+
+  .modal-footer {
+    padding: 12px 18px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .modal-tools { display: flex; gap: 6px; }
+
+  .modal-tool {
+    width: 30px; height: 30px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.12s;
+  }
+
+  .modal-tool:hover { background: var(--surface); border-color: var(--border); color: var(--text); }
+  .modal-tool svg { width: 14px; height: 14px; }
+
+  .send-btn {
+    padding: 8px 18px;
+    background: var(--green);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 7px;
+    transition: background 0.15s, transform 0.1s;
+  }
+
+  .send-btn:hover { background: var(--accent); transform: translateY(-1px); }
+  .send-btn svg { width: 13px; height: 13px; }
+
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .email-item { animation: fadeSlideIn 0.2s ease both; }
+  .email-item:nth-child(1) { animation-delay: 0.03s; }
+  .email-item:nth-child(2) { animation-delay: 0.07s; }
+  .email-item:nth-child(3) { animation-delay: 0.11s; }
+  .email-item:nth-child(4) { animation-delay: 0.15s; }
+  .email-item:nth-child(5) { animation-delay: 0.19s; }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <div class="logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+          <polyline points="22,6 12,13 2,6"/>
+        </svg>
+      </div>
+      <span class="logo-name">Verdant</span>
+    </div>
+    <button class="compose-btn" onclick="openCompose()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      Compose
+    </button>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="section-label">Mailboxes</div>
+    <div class="nav-item active" onclick="setActive(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 13V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h8"/><polyline points="22,6 12,13 2,6"/></svg>
+      Inbox
+      <span class="nav-badge">4</span>
+    </div>
+    <div class="nav-item" onclick="setActive(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      Starred
+    </div>
+    <div class="nav-item" onclick="setActive(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Snoozed
+    </div>
+    <div class="nav-item" onclick="setActive(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      Sent
+    </div>
+    <div class="nav-item" onclick="setActive(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Drafts
+      <span class="nav-badge">2</span>
+    </div>
+
+    <div class="sidebar-divider"></div>
+    <div class="section-label">Labels</div>
+
+    <div class="nav-item" onclick="setActive(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+      Work
+    </div>
+    <div class="nav-item" onclick="setActive(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+      Personal
+    </div>
+    <div class="nav-item" onclick="setActive(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+      Finance
+    </div>
+  </div>
+
+  <div class="sidebar-footer">
+    <div class="user-row">
+      <div class="avatar">AK</div>
+      <div class="user-info">
+        <div class="user-name">Aaron K.</div>
+        <div class="user-email">aaron@verdant.io</div>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<div class="email-list-pane">
+  <div class="list-header">
+    <div class="list-title-row">
+      <span class="list-title">Inbox</span>
+      <span class="list-count">24 messages</span>
+    </div>
+    <div class="search-bar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" placeholder="Search mail…">
+    </div>
+    <div class="filter-chips">
+      <div class="chip active" onclick="toggleChip(this)">All</div>
+      <div class="chip" onclick="toggleChip(this)">Unread</div>
+      <div class="chip" onclick="toggleChip(this)">Attachments</div>
+      <div class="chip" onclick="toggleChip(this)">Flagged</div>
+    </div>
+  </div>
+
+  <div class="email-list">
+    <div class="email-item unread active" onclick="selectEmail(this)">
+      <div class="unread-dot"></div>
+      <div class="email-item-inner">
+        <div class="email-top">
+          <span class="email-sender">Mia Johansson</span>
+          <span class="email-time">9:41 AM</span>
+        </div>
+        <div class="email-subject">Re: Q3 design review feedback</div>
+        <div class="email-preview">Thanks for the detailed notes! I've updated the colour tokens and will push the revisions to Figma…</div>
+        <div class="email-tags"><span class="email-tag">Work</span></div>
+      </div>
+    </div>
+
+    <div class="email-item unread" onclick="selectEmail(this)">
+      <div class="unread-dot"></div>
+      <div class="email-item-inner">
+        <div class="email-top">
+          <span class="email-sender">Luca Ferretti</span>
+          <span class="email-time">8:17 AM</span>
+        </div>
+        <div class="email-subject">Infrastructure cost estimates — revised</div>
+        <div class="email-preview">Hi! I've re-run the numbers with the new node counts. Attached the updated spreadsheet…</div>
+        <div class="email-tags"><span class="email-tag">Work</span></div>
+      </div>
+    </div>
+
+    <div class="email-item unread" onclick="selectEmail(this)">
+      <div class="unread-dot"></div>
+      <div class="email-item-inner">
+        <div class="email-top">
+          <span class="email-sender">GitHub Notifications</span>
+          <span class="email-time">7:03 AM</span>
+        </div>
+        <div class="email-subject">[verdant/core] PR #48 merged</div>
+        <div class="email-preview">Your pull request "feat: add dark mode token system" has been successfully merged into main…</div>
+      </div>
+    </div>
+
+    <div class="email-item unread" onclick="selectEmail(this)">
+      <div class="unread-dot"></div>
+      <div class="email-item-inner">
+        <div class="email-top">
+          <span class="email-sender">Nora Blackwell</span>
+          <span class="email-time">Yesterday</span>
+        </div>
+        <div class="email-subject">Weekend trip — are you in?</div>
+        <div class="email-preview">Hey! A few of us are thinking about a weekend in the Peak District at the end of the month…</div>
+        <div class="email-tags"><span class="email-tag">Personal</span></div>
+      </div>
+    </div>
+
+    <div class="email-item" onclick="selectEmail(this)">
+      <div class="email-item-inner">
+        <div class="email-top">
+          <span class="email-sender">Stripe</span>
+          <span class="email-time">Yesterday</span>
+        </div>
+        <div class="email-subject">Your April invoice is ready</div>
+        <div class="email-preview">Invoice #INV-2025-0412 for £42.00 is now available in your dashboard…</div>
+        <div class="email-tags"><span class="email-tag">Finance</span></div>
+      </div>
+    </div>
+
+    <div class="email-item" onclick="selectEmail(this)">
+      <div class="email-item-inner">
+        <div class="email-top">
+          <span class="email-sender">Tom Erikson</span>
+          <span class="email-time">Mon</span>
+        </div>
+        <div class="email-subject">Checking in on the API docs</div>
+        <div class="email-preview">Hey Aaron, just wanted to follow up on the OpenAPI spec we discussed — any updates on timeline?</div>
+        <div class="email-tags"><span class="email-tag">Work</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="reading-pane">
+  <div class="reading-header">
+    <div class="reading-actions">
+      <button class="icon-btn" title="Archive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+      </button>
+      <button class="icon-btn" title="Delete">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      </button>
+      <button class="icon-btn" title="Mark unread">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      </button>
+      <button class="icon-btn" title="Star">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      </button>
+      <button class="icon-btn" title="Label" style="margin-left:auto">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+      </button>
+      <button class="icon-btn" title="More">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+      </button>
+    </div>
+
+    <div class="reading-subject">Re: Q3 design review feedback</div>
+
+    <div class="reading-meta">
+      <div class="meta-avatar">MJ</div>
+      <div class="meta-info">
+        <div class="meta-from">Mia Johansson &lt;mia@studio.io&gt;</div>
+        <div class="meta-to">to me, luca@verdant.io, +2 others</div>
+      </div>
+      <div class="meta-date">Today, 9:41 AM</div>
+    </div>
+  </div>
+
+  <div class="reading-body">
+    <div class="email-body-text">
+      <p>Hi Aaron,</p>
+      <p>Thanks so much for the thorough notes — really appreciate you going through everything section by section. I've already pushed the updated colour tokens to the shared Figma file; the greens are now mapped to the correct semantic names so the handoff doc should be much cleaner.</p>
+
+      <div class="highlight">
+        The spacing scale was the main sticking point. I've moved everything to a base-8 grid, which should resolve the inconsistencies Tom flagged on the mobile breakpoints.
+      </div>
+
+      <p>A few things I still need your input on before Friday:</p>
+      <p>1. The illustration style — are we sticking with the outlined approach or moving to filled icons? Luca mentioned the filled set looks more cohesive with the new surface colours but I want to confirm before going through the whole component library.</p>
+      <p>2. Motion spec for the modal transitions — I've sketched two options (ease-out-cubic vs spring) and would love a quick call to align before dev handoff.</p>
+      <p>Let me know your availability for a 20-min sync this week. I'm free Thursday afternoon or Friday morning.</p>
+      <p>Best,<br>Mia</p>
+
+      <div class="thread-divider">2 earlier messages in thread</div>
+
+      <p style="color: var(--text-muted); font-size: 13.5px;"><strong style="color: var(--text-mid);">Aaron K.</strong> · Yesterday, 4:12 PM</p>
+      <p>Hey Mia — I've gone through the review doc and left inline comments. Main things: colour token naming, the spacing inconsistencies on mobile, and the illustration set decision we need to make before dev handoff.</p>
+    </div>
+  </div>
+
+  <div class="reply-bar">
+    <div class="reply-box" onclick="openCompose()">
+      <span>Reply to Mia…</span>
+      <button class="reply-send-btn" onclick="event.stopPropagation(); openCompose()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Reply
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="composeModal" onclick="handleOverlayClick(event)">
+  <div class="compose-modal">
+    <div class="modal-header">
+      <span class="modal-title">New Message</span>
+      <button class="modal-close" onclick="closeCompose()">×</button>
+    </div>
+    <div class="modal-fields">
+      <div class="modal-field">
+        <label>To</label>
+        <input type="email" placeholder="recipient@example.com">
+      </div>
+      <div class="modal-field">
+        <label>Cc</label>
+        <input type="email" placeholder="Add cc…">
+      </div>
+      <div class="modal-field">
+        <label>Re</label>
+        <input type="text" placeholder="Subject">
+      </div>
+    </div>
+    <div class="modal-body">
+      <textarea placeholder="Write your message…"></textarea>
+    </div>
+    <div class="modal-footer">
+      <div class="modal-tools">
+        <button class="modal-tool" title="Attach file">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        </button>
+        <button class="modal-tool" title="Emoji">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+        </button>
+        <button class="modal-tool" title="Format text">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>
+        </button>
+      </div>
+      <button class="send-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Send
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function openCompose() {
+    document.getElementById('composeModal').classList.add('open');
+  }
+  function closeCompose() {
+    document.getElementById('composeModal').classList.remove('open');
+  }
+  function handleOverlayClick(e) {
+    if (e.target === document.getElementById('composeModal')) closeCompose();
+  }
+  function setActive(el) {
+    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+    el.classList.add('active');
+  }
+  function selectEmail(el) {
+    document.querySelectorAll('.email-item').forEach(i => i.classList.remove('active'));
+    el.classList.add('active');
+    el.classList.remove('unread');
+    const dot = el.querySelector('.unread-dot');
+    if (dot) dot.remove();
+  }
+  function toggleChip(el) {
+    document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+  }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeCompose();
+  });
+</script>
+</body>
 </html>

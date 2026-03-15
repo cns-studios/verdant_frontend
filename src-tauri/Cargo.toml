@@ -1,47 +1,25 @@
 [package]
-name = "verdant_frontend"
-version = "0.0.0"
-description = "Verdant Mail — a lightweight native email client"
+name = "app"
+version = "0.1.0"
+description = "A Tauri App"
 authors = ["you"]
 license = ""
 repository = ""
 edition = "2021"
+rust-version = "1.77.2"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "1.5", features = [] }
+tauri-build = { version = "2.5.6", features = [] }
 
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-tauri = { version = "1.6", features = ["shell-open"] }
-
-# Async runtime
-tokio = { version = "1", features = ["full"] }
-
-# Database
-sqlx = { version = "0.7", features = ["runtime-tokio-native-tls", "sqlite", "macros"] }
-
-# IMAP
-async-imap = { version = "0.9", default-features = false, features = ["runtime-tokio"] }
-tokio-native-tls = "0.3"
-native-tls = "0.2"
-
-# SMTP
-lettre = { version = "0.11", features = ["tokio1", "tokio1-native-tls", "smtp-transport", "builder"] }
-
-# Email parsing
-mail-parser = "0.9"
-
-# Misc
-keyring = "2"
-dirs = "5"
-chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1", features = ["v4"] }
-anyhow = "1"
 log = "0.4"
-env_logger = "0.11"
-futures = "0.3"
-
-[features]
-default = ["custom-protocol"]
-custom-protocol = ["tauri/custom-protocol"]
+tauri = { version = "2.10.3", features = [] }
+tauri-plugin-log = "2"
