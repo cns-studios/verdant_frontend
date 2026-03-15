@@ -14,6 +14,7 @@ pub struct Email {
     pub starred: bool,
     pub mailbox: String,
     pub labels: String,
+    pub internal_ts: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,7 +37,8 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             is_read INTEGER NOT NULL,
             starred INTEGER NOT NULL DEFAULT 0,
             mailbox TEXT NOT NULL DEFAULT 'INBOX',
-            labels TEXT NOT NULL DEFAULT ''
+            labels TEXT NOT NULL DEFAULT '',
+            internal_ts INTEGER NOT NULL DEFAULT 0
         )",
         [],
     )?;
@@ -46,6 +48,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
     let _ = conn.execute("ALTER TABLE emails ADD COLUMN starred INTEGER NOT NULL DEFAULT 0", []);
     let _ = conn.execute("ALTER TABLE emails ADD COLUMN mailbox TEXT NOT NULL DEFAULT 'INBOX'", []);
     let _ = conn.execute("ALTER TABLE emails ADD COLUMN labels TEXT NOT NULL DEFAULT ''", []);
+    let _ = conn.execute("ALTER TABLE emails ADD COLUMN internal_ts INTEGER NOT NULL DEFAULT 0", []);
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS oauth_tokens (

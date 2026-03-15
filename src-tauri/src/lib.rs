@@ -287,6 +287,11 @@ async fn sync_mailbox_internal(state: &DbState, mailbox: &str) -> Result<(), Str
             &header_value(&headers, "From").unwrap_or_else(|| "Unknown Sender".to_string()),
         );
         let date = header_value(&headers, "Date").unwrap_or_else(|| "Unknown Date".to_string());
+        let internal_ts = detail_json
+            .get("internalDate")
+            .and_then(Value::as_str)
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or(0);
 
         let body_html = if exists {
             let conn = state.conn.lock().await;
@@ -314,8 +319,8 @@ async fn sync_mailbox_internal(state: &DbState, mailbox: &str) -> Result<(), Str
 
         let conn = state.conn.lock().await;
         conn.execute(
-            "INSERT INTO emails (id, thread_id, subject, sender, snippet, body_html, date, is_read, mailbox, labels)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            "INSERT INTO emails (id, thread_id, subject, sender, snippet, body_html, date, is_read, mailbox, labels, internal_ts)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
              ON CONFLICT(id)
              DO UPDATE SET
                 thread_id = excluded.thread_id,
@@ -325,7 +330,8 @@ async fn sync_mailbox_internal(state: &DbState, mailbox: &str) -> Result<(), Str
                 body_html = excluded.body_html,
                 date = excluded.date,
                 mailbox = excluded.mailbox,
-                labels = excluded.labels",
+                labels = excluded.labels,
+                internal_ts = excluded.internal_ts",
             (
                 id,
                 &thread_id,
@@ -337,6 +343,7 @@ async fn sync_mailbox_internal(state: &DbState, mailbox: &str) -> Result<(), Str
                 is_read as i32,
                 mailbox,
                 &labels,
+                internal_ts,
             ),
         )
         .map_err(|e| e.to_string())?;
@@ -363,16 +370,27 @@ async fn sync_mailbox(state: State<'_, DbState>, mailbox: String) -> Result<(), 
 }
 
 #[tauri::command]
-async fn get_emails(state: State<'_, DbState>, mailbox: Option<String>) -> Result<Vec<Email>, String> {
+async fn get_emails(
+    state: State<'_, DbState>,
+    mailbox: Option<String>,
+    label: Option<String>,
+) -> Result<Vec<Email>, String> {
     let box_name = mailbox.unwrap_or_else(|| "INBOX".to_string());
+    let label_filter = label.unwrap_or_default();
     let conn = state.conn.lock().await;
 
-    let sql = if box_name == "STARRED" {
-        "SELECT id, thread_id, subject, sender, snippet, body_html, date, is_read, starred, mailbox, labels
-         FROM emails WHERE starred = 1 ORDER BY rowid DESC LIMIT 100"
+    let sql = if box_name == "STARRED" && label_filter.is_empty() {
+        "SELECT id, thread_id, subject, sender, snippet, body_html, date, is_read, starred, mailbox, labels, internal_ts
+         FROM emails WHERE starred = 1 ORDER BY internal_ts DESC, rowid DESC LIMIT 500"
+    } else if box_name == "STARRED" {
+        "SELECT id, thread_id, subject, sender, snippet, body_html, date, is_read, starred, mailbox, labels, internal_ts
+         FROM emails WHERE starred = 1 AND labels LIKE '%' || ?1 || '%' ORDER BY internal_ts DESC, rowid DESC LIMIT 500"
+    } else if label_filter.is_empty() {
+        "SELECT id, thread_id, subject, sender, snippet, body_html, date, is_read, starred, mailbox, labels, internal_ts
+         FROM emails WHERE mailbox = ?1 ORDER BY internal_ts DESC, rowid DESC LIMIT 500"
     } else {
-        "SELECT id, thread_id, subject, sender, snippet, body_html, date, is_read, starred, mailbox, labels
-         FROM emails WHERE mailbox = ?1 ORDER BY rowid DESC LIMIT 100"
+        "SELECT id, thread_id, subject, sender, snippet, body_html, date, is_read, starred, mailbox, labels, internal_ts
+         FROM emails WHERE mailbox = ?1 AND labels LIKE '%' || ?2 || '%' ORDER BY internal_ts DESC, rowid DESC LIMIT 500"
     };
 
     let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
@@ -390,16 +408,27 @@ async fn get_emails(state: State<'_, DbState>, mailbox: Option<String>) -> Resul
             starred: row.get::<_, i32>(8)? != 0,
             mailbox: row.get(9)?,
             labels: row.get(10)?,
+            internal_ts: row.get(11)?,
         })
     };
 
-    let emails = if box_name == "STARRED" {
+    let emails = if box_name == "STARRED" && label_filter.is_empty() {
         stmt.query_map([], mapper)
             .map_err(|e| e.to_string())?
             .filter_map(Result::ok)
             .collect()
-    } else {
+    } else if box_name == "STARRED" {
+        stmt.query_map([label_filter.as_str()], mapper)
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect()
+    } else if label_filter.is_empty() {
         stmt.query_map([box_name.as_str()], mapper)
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect()
+    } else {
+        stmt.query_map((box_name.as_str(), label_filter.as_str()), mapper)
             .map_err(|e| e.to_string())?
             .filter_map(Result::ok)
             .collect()
