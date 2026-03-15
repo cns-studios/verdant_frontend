@@ -11,6 +11,9 @@ pub struct Email {
     pub body_html: String,
     pub date: String,
     pub is_read: bool,
+    pub starred: bool,
+    pub mailbox: String,
+    pub labels: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,13 +33,19 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             snippet TEXT NOT NULL DEFAULT '',
             body_html TEXT NOT NULL,
             date TEXT NOT NULL,
-            is_read INTEGER NOT NULL
+            is_read INTEGER NOT NULL,
+            starred INTEGER NOT NULL DEFAULT 0,
+            mailbox TEXT NOT NULL DEFAULT 'INBOX',
+            labels TEXT NOT NULL DEFAULT ''
         )",
         [],
     )?;
 
     // Lightweight migration for existing local DBs created before snippet existed.
     let _ = conn.execute("ALTER TABLE emails ADD COLUMN snippet TEXT NOT NULL DEFAULT ''", []);
+    let _ = conn.execute("ALTER TABLE emails ADD COLUMN starred INTEGER NOT NULL DEFAULT 0", []);
+    let _ = conn.execute("ALTER TABLE emails ADD COLUMN mailbox TEXT NOT NULL DEFAULT 'INBOX'", []);
+    let _ = conn.execute("ALTER TABLE emails ADD COLUMN labels TEXT NOT NULL DEFAULT ''", []);
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS oauth_tokens (
@@ -64,6 +73,16 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         [],
     );
 
+    Ok(())
+}
+
+pub fn clear_tokens(conn: &Connection) -> Result<()> {
+    conn.execute("DELETE FROM oauth_tokens", [])?;
+    Ok(())
+}
+
+pub fn clear_emails(conn: &Connection) -> Result<()> {
+    conn.execute("DELETE FROM emails", [])?;
     Ok(())
 }
 

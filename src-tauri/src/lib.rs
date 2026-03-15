@@ -1,14 +1,14 @@
-mod db;
 mod auth;
+mod db;
 
-use db::{get_token, init_db, upsert_token, Email, StoredToken};
-use rusqlite::Connection;
-use tokio::sync::Mutex;
-use tauri::State;
-use serde_json::Value;
-use serde::Serialize;
-use std::time::{SystemTime, UNIX_EPOCH};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use db::{clear_emails, clear_tokens, get_token, init_db, upsert_token, Email, StoredToken};
+use rusqlite::Connection;
+use serde::Serialize;
+use serde_json::{json, Value};
+use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::State;
+use tokio::sync::Mutex;
 
 struct DbState {
     conn: Mutex<Connection>,
@@ -19,6 +19,23 @@ struct DbState {
 struct AuthStatus {
     has_client_id: bool,
     connected: bool,
+}
+
+#[derive(Serialize)]
+struct MailboxCounts {
+    inbox_total: i64,
+    inbox_unread: i64,
+    starred_total: i64,
+    sent_total: i64,
+    drafts_total: i64,
+    snoozed_total: i64,
+}
+
+#[derive(Serialize)]
+struct UserProfile {
+    name: String,
+    email: String,
+    initials: String,
 }
 
 fn now_epoch() -> i64 {
@@ -47,8 +64,29 @@ fn header_value(headers: &[Value], name: &str) -> Option<String> {
         .and_then(|h| h.get("value").and_then(Value::as_str).map(str::to_string))
 }
 
+fn strip_confusable_chars(input: &str) -> String {
+    input
+        .chars()
+        .filter(|c| {
+            !matches!(
+                *c,
+                '\u{200B}'
+                    | '\u{200C}'
+                    | '\u{200D}'
+                    | '\u{200E}'
+                    | '\u{200F}'
+                    | '\u{2060}'
+                    | '\u{FEFF}'
+            )
+        })
+        .collect()
+}
+
 fn extract_body(payload: &Value) -> Option<String> {
-    let mime = payload.get("mimeType").and_then(Value::as_str).unwrap_or_default();
+    let mime = payload
+        .get("mimeType")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     let body_data = payload
         .get("body")
         .and_then(|b| b.get("data"))
@@ -56,11 +94,12 @@ fn extract_body(payload: &Value) -> Option<String> {
 
     if let Some(data) = body_data {
         let decoded = decode_gmail_base64(data)?;
+        let cleaned = strip_confusable_chars(&decoded);
         if mime.eq_ignore_ascii_case("text/html") {
-            return Some(decoded);
+            return Some(cleaned);
         }
         if mime.eq_ignore_ascii_case("text/plain") {
-            return Some(format!("<pre>{}</pre>", decoded));
+            return Some(format!("<pre>{}</pre>", cleaned));
         }
     }
 
@@ -124,46 +163,42 @@ async fn ensure_token(state: &DbState) -> Result<StoredToken, String> {
     persist_token(state, fresh).await
 }
 
-#[tauri::command]
-async fn sync_emails(state: State<'_, DbState>) -> Result<(), String> {
-    let client = reqwest::Client::new();
-    let mut token = ensure_token(&state).await?.access_token;
-    let mut last_error = None;
-
-    let mut json_opt: Option<Value> = None;
-    for _ in 0..2 {
-        let res = client
-            .get("https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds=INBOX&maxResults=50")
-            .bearer_auth(&token)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        if res.status().as_u16() == 401 {
-            {
-                let mut cache = state.token.lock().await;
-                *cache = None;
-            }
-            token = ensure_token(&state).await?.access_token;
-            continue;
-        }
-
-        if !res.status().is_success() {
-            let status = res.status();
-            let body = res.text().await.unwrap_or_default();
-            last_error = Some(format!("Gmail list API failed: {} {}", status, body));
-            break;
-        }
-
-        json_opt = Some(res.json::<Value>().await.map_err(|e| e.to_string())?);
-        break;
+fn mailbox_label(mailbox: &str) -> Option<&'static str> {
+    match mailbox {
+        "INBOX" => Some("INBOX"),
+        "SENT" => Some("SENT"),
+        "DRAFT" => Some("DRAFT"),
+        "SNOOZED" => Some("SNOOZED"),
+        _ => None,
     }
+}
 
-    let json = match json_opt {
-        Some(v) => v,
-        None => return Err(last_error.unwrap_or_else(|| "Unable to list Gmail messages".to_string())),
+async fn sync_mailbox_internal(state: &DbState, mailbox: &str) -> Result<(), String> {
+    let Some(label) = mailbox_label(mailbox) else {
+        return Ok(());
     };
 
+    let client = reqwest::Client::new();
+    let token = ensure_token(state).await?.access_token;
+
+    let list_url = format!(
+        "https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds={}&maxResults=50",
+        label
+    );
+    let res = client
+        .get(list_url)
+        .bearer_auth(&token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !res.status().is_success() {
+        let status = res.status();
+        let body = res.text().await.unwrap_or_default();
+        return Err(format!("Gmail list API failed: {} {}", status, body));
+    }
+
+    let json = res.json::<Value>().await.map_err(|e| e.to_string())?;
     let messages = json
         .get("messages")
         .and_then(Value::as_array)
@@ -175,7 +210,10 @@ async fn sync_emails(state: State<'_, DbState>) -> Result<(), String> {
             continue;
         };
 
-        let detail_url = format!("https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=full", id);
+        let detail_url = format!(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=full",
+            id
+        );
         let detail = client
             .get(detail_url)
             .bearer_auth(&token)
@@ -195,11 +233,12 @@ async fn sync_emails(state: State<'_, DbState>) -> Result<(), String> {
             .unwrap_or_default()
             .to_string();
 
-        let snippet = detail_json
-            .get("snippet")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
+        let snippet = strip_confusable_chars(
+            detail_json
+                .get("snippet")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        );
 
         let headers = detail_json
             .get("payload")
@@ -208,8 +247,12 @@ async fn sync_emails(state: State<'_, DbState>) -> Result<(), String> {
             .cloned()
             .unwrap_or_default();
 
-        let subject = header_value(&headers, "Subject").unwrap_or_else(|| "(No Subject)".to_string());
-        let sender = header_value(&headers, "From").unwrap_or_else(|| "Unknown Sender".to_string());
+        let subject = strip_confusable_chars(
+            &header_value(&headers, "Subject").unwrap_or_else(|| "(No Subject)".to_string()),
+        );
+        let sender = strip_confusable_chars(
+            &header_value(&headers, "From").unwrap_or_else(|| "Unknown Sender".to_string()),
+        );
         let date = header_value(&headers, "Date").unwrap_or_else(|| "Unknown Date".to_string());
 
         let body_html = detail_json
@@ -217,16 +260,23 @@ async fn sync_emails(state: State<'_, DbState>) -> Result<(), String> {
             .and_then(extract_body)
             .unwrap_or_else(|| format!("<pre>{}</pre>", snippet));
 
-        let is_read = !detail_json
+        let labels = detail_json
             .get("labelIds")
             .and_then(Value::as_array)
-            .map(|labels| labels.iter().any(|v| v.as_str() == Some("UNREAD")))
-            .unwrap_or(false);
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
+            .unwrap_or_default();
+
+        let is_read = !labels.split(',').any(|l| l == "UNREAD");
 
         let conn = state.conn.lock().await;
         conn.execute(
-            "INSERT INTO emails (id, thread_id, subject, sender, snippet, body_html, date, is_read)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "INSERT INTO emails (id, thread_id, subject, sender, snippet, body_html, date, is_read, mailbox, labels)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
              ON CONFLICT(id)
              DO UPDATE SET
                 thread_id = excluded.thread_id,
@@ -235,7 +285,8 @@ async fn sync_emails(state: State<'_, DbState>) -> Result<(), String> {
                 snippet = excluded.snippet,
                 body_html = excluded.body_html,
                 date = excluded.date,
-                is_read = excluded.is_read",
+                mailbox = excluded.mailbox,
+                labels = excluded.labels",
             (
                 id,
                 &thread_id,
@@ -245,6 +296,8 @@ async fn sync_emails(state: State<'_, DbState>) -> Result<(), String> {
                 &body_html,
                 &date,
                 is_read as i32,
+                mailbox,
+                &labels,
             ),
         )
         .map_err(|e| e.to_string())?;
@@ -254,18 +307,38 @@ async fn sync_emails(state: State<'_, DbState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn get_emails(state: State<'_, DbState>) -> Result<Vec<Email>, String> {
-    let conn = state.conn.lock().await;
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, thread_id, subject, sender, snippet, body_html, date, is_read
-             FROM emails
-             ORDER BY rowid DESC
-             LIMIT 100",
-        )
-        .map_err(|e| e.to_string())?;
+async fn connect_gmail(state: State<'_, DbState>) -> Result<(), String> {
+    let fresh = auth::login_interactive().await?;
+    let _ = persist_token(&state, fresh).await?;
+    Ok(())
+}
 
-    let emails = stmt.query_map([], |row| {
+#[tauri::command]
+async fn sync_emails(state: State<'_, DbState>) -> Result<(), String> {
+    sync_mailbox_internal(&state, "INBOX").await
+}
+
+#[tauri::command]
+async fn sync_mailbox(state: State<'_, DbState>, mailbox: String) -> Result<(), String> {
+    sync_mailbox_internal(&state, mailbox.as_str()).await
+}
+
+#[tauri::command]
+async fn get_emails(state: State<'_, DbState>, mailbox: Option<String>) -> Result<Vec<Email>, String> {
+    let box_name = mailbox.unwrap_or_else(|| "INBOX".to_string());
+    let conn = state.conn.lock().await;
+
+    let sql = if box_name == "STARRED" {
+        "SELECT id, thread_id, subject, sender, snippet, body_html, date, is_read, starred, mailbox, labels
+         FROM emails WHERE starred = 1 ORDER BY rowid DESC LIMIT 100"
+    } else {
+        "SELECT id, thread_id, subject, sender, snippet, body_html, date, is_read, starred, mailbox, labels
+         FROM emails WHERE mailbox = ?1 ORDER BY rowid DESC LIMIT 100"
+    };
+
+    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+
+    let mapper = |row: &rusqlite::Row<'_>| {
         Ok(Email {
             id: row.get(0)?,
             thread_id: row.get(1)?,
@@ -275,11 +348,187 @@ async fn get_emails(state: State<'_, DbState>) -> Result<Vec<Email>, String> {
             body_html: row.get(5)?,
             date: row.get(6)?,
             is_read: row.get::<_, i32>(7)? != 0,
+            starred: row.get::<_, i32>(8)? != 0,
+            mailbox: row.get(9)?,
+            labels: row.get(10)?,
         })
-    }).map_err(|e| e.to_string())?
-    .filter_map(Result::ok)
-    .collect();
+    };
+
+    let emails = if box_name == "STARRED" {
+        stmt.query_map([], mapper)
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect()
+    } else {
+        stmt.query_map([box_name.as_str()], mapper)
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect()
+    };
+
     Ok(emails)
+}
+
+#[tauri::command]
+async fn set_email_read_status(state: State<'_, DbState>, email_id: String, is_read: bool) -> Result<(), String> {
+    let conn = state.conn.lock().await;
+    conn.execute(
+        "UPDATE emails SET is_read = ?1 WHERE id = ?2",
+        (is_read as i32, email_id),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn toggle_starred(state: State<'_, DbState>, email_id: String) -> Result<(), String> {
+    let conn = state.conn.lock().await;
+    conn.execute(
+        "UPDATE emails SET starred = CASE WHEN starred = 1 THEN 0 ELSE 1 END WHERE id = ?1",
+        [email_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn archive_email(state: State<'_, DbState>, email_id: String) -> Result<(), String> {
+    let token = ensure_token(&state).await?.access_token;
+    let client = reqwest::Client::new();
+    let url = format!("https://gmail.googleapis.com/gmail/v1/users/me/messages/{}/modify", email_id);
+
+    let res = client
+        .post(url)
+        .bearer_auth(&token)
+        .json(&json!({"removeLabelIds": ["INBOX"]}))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !res.status().is_success() {
+        return Err(format!("Archive failed: {}", res.status()));
+    }
+
+    let conn = state.conn.lock().await;
+    conn.execute("UPDATE emails SET mailbox = 'ARCHIVE' WHERE id = ?1", [email_id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn trash_email(state: State<'_, DbState>, email_id: String) -> Result<(), String> {
+    let token = ensure_token(&state).await?.access_token;
+    let client = reqwest::Client::new();
+    let url = format!("https://gmail.googleapis.com/gmail/v1/users/me/messages/{}/trash", email_id);
+
+    let res = client
+        .post(url)
+        .bearer_auth(&token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !res.status().is_success() {
+        return Err(format!("Trash failed: {}", res.status()));
+    }
+
+    let conn = state.conn.lock().await;
+    conn.execute("DELETE FROM emails WHERE id = ?1", [email_id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_mailbox_counts(state: State<'_, DbState>) -> Result<MailboxCounts, String> {
+    let conn = state.conn.lock().await;
+
+    let inbox_total: i64 = conn
+        .query_row("SELECT COUNT(*) FROM emails WHERE mailbox = 'INBOX'", [], |r| r.get(0))
+        .unwrap_or(0);
+    let inbox_unread: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM emails WHERE mailbox = 'INBOX' AND is_read = 0",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    let starred_total: i64 = conn
+        .query_row("SELECT COUNT(*) FROM emails WHERE starred = 1", [], |r| r.get(0))
+        .unwrap_or(0);
+    let sent_total: i64 = conn
+        .query_row("SELECT COUNT(*) FROM emails WHERE mailbox = 'SENT'", [], |r| r.get(0))
+        .unwrap_or(0);
+    let drafts_total: i64 = conn
+        .query_row("SELECT COUNT(*) FROM emails WHERE mailbox = 'DRAFT'", [], |r| r.get(0))
+        .unwrap_or(0);
+    let snoozed_total: i64 = conn
+        .query_row("SELECT COUNT(*) FROM emails WHERE mailbox = 'SNOOZED'", [], |r| r.get(0))
+        .unwrap_or(0);
+
+    Ok(MailboxCounts {
+        inbox_total,
+        inbox_unread,
+        starred_total,
+        sent_total,
+        drafts_total,
+        snoozed_total,
+    })
+}
+
+#[tauri::command]
+async fn get_user_profile(state: State<'_, DbState>) -> Result<UserProfile, String> {
+    let token = ensure_token(&state).await?.access_token;
+    let client = reqwest::Client::new();
+
+    let res = client
+        .get("https://gmail.googleapis.com/gmail/v1/users/me/profile")
+        .bearer_auth(&token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !res.status().is_success() {
+        return Err(format!("Profile request failed: {}", res.status()));
+    }
+
+    let body = res.json::<Value>().await.map_err(|e| e.to_string())?;
+    let email = body
+        .get("emailAddress")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown@example.com")
+        .to_string();
+
+    let name = email.split('@').next().unwrap_or("User").replace('.', " ");
+    let initials = name
+        .split_whitespace()
+        .take(2)
+        .filter_map(|p| p.chars().next())
+        .collect::<String>()
+        .to_uppercase();
+
+    Ok(UserProfile {
+        name,
+        email,
+        initials: if initials.is_empty() { "U".to_string() } else { initials },
+    })
+}
+
+#[tauri::command]
+async fn logout(state: State<'_, DbState>) -> Result<(), String> {
+    {
+        let mut cache = state.token.lock().await;
+        *cache = None;
+    }
+    let conn = state.conn.lock().await;
+    clear_tokens(&conn).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn clear_local_data(state: State<'_, DbState>) -> Result<(), String> {
+    let conn = state.conn.lock().await;
+    clear_emails(&conn).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -296,7 +545,7 @@ async fn send_email(state: State<'_, DbState>, to: String, subject: String, body
     let res = client
         .post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send")
         .bearer_auth(&token)
-        .json(&serde_json::json!({ "raw": encoded }))
+        .json(&json!({ "raw": encoded }))
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -306,13 +555,6 @@ async fn send_email(state: State<'_, DbState>, to: String, subject: String, body
     } else {
         Err(format!("Error: {}", res.status()))
     }
-}
-
-#[tauri::command]
-async fn connect_gmail(state: State<'_, DbState>) -> Result<(), String> {
-    let fresh = auth::login_interactive().await?;
-    let _ = persist_token(&state, fresh).await?;
-    Ok(())
 }
 
 #[tauri::command]
@@ -338,14 +580,16 @@ async fn auth_status(state: State<'_, DbState>) -> Result<AuthStatus, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Try root-level .env first (npm run tauri dev from workspace root), then local src-tauri/.env.
     let _ = dotenvy::from_filename("../.env").or_else(|_| dotenvy::from_filename(".env"));
 
     let conn = Connection::open("emails.db").expect("Failed to open DB");
     init_db(&conn).expect("Failed to init DB");
 
     tauri::Builder::default()
-        .manage(DbState { conn: Mutex::new(conn), token: Mutex::new(None) })
+        .manage(DbState {
+            conn: Mutex::new(conn),
+            token: Mutex::new(None),
+        })
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -356,7 +600,22 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![sync_emails, get_emails, send_email, auth_status, connect_gmail])
+        .invoke_handler(tauri::generate_handler![
+            connect_gmail,
+            sync_emails,
+            sync_mailbox,
+            get_emails,
+            set_email_read_status,
+            toggle_starred,
+            archive_email,
+            trash_email,
+            get_mailbox_counts,
+            get_user_profile,
+            logout,
+            clear_local_data,
+            send_email,
+            auth_status
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
