@@ -2,7 +2,10 @@ import { invoke } from "@tauri-apps/api/core";
 
 let currentMailbox = "INBOX";
 let currentEmails = [];
-let currentSelected = null;
+let selectedEmail = null;
+let activeFilter = "All";
+let syncTimer = null;
+let knownInboxIds = new Set();
 
 function escapeHtml(input) {
   if (!input) return "";
@@ -12,6 +15,14 @@ function escapeHtml(input) {
     .replace(/>/g, "&gt;")
     .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function sanitizeUnicodeNoise(input) {
+  if (!input) return "";
+  return input
+    .replace(/[\u00AD\u034F\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
 }
 
 function shortDate(raw) {
@@ -37,57 +48,67 @@ function mailboxTitle(mailbox) {
   }
 }
 
+function emailMatchesFilter(email) {
+  if (activeFilter === "Unread") return !email.is_read;
+  if (activeFilter === "Flagged") return !!email.starred;
+  if (activeFilter === "Attachments") {
+    return /attachment|\.pdf|\.doc|\.xlsx|\.zip/i.test(email.snippet || "");
+  }
+  return true;
+}
+
+function ensureStyles() {
+  if (document.getElementById("verdant-dynamic-styles")) return;
+  const style = document.createElement("style");
+  style.id = "verdant-dynamic-styles";
+  style.textContent = `
+    .verdant-overlay { position: fixed; inset: 0; z-index: 2000; background: rgba(31,28,24,0.42); backdrop-filter: blur(2px); display:flex; align-items:center; justify-content:center; }
+    .verdant-panel { width:min(560px, 92vw); background: var(--surface); border:1px solid var(--border); border-radius:14px; box-shadow: 0 22px 52px rgba(37,35,31,0.18); padding: 24px; }
+    .verdant-panel h2 { font: 500 24px 'Fraunces', serif; color: var(--text); margin-bottom: 10px; }
+    .verdant-panel p { font: 400 13px 'DM Sans', sans-serif; color: var(--text-mid); line-height: 1.5; margin-bottom: 16px; }
+    .verdant-actions { display:flex; gap: 10px; justify-content:flex-end; }
+    .verdant-btn { padding: 8px 14px; border-radius: 8px; border:1px solid var(--border); background: var(--surface2); color: var(--text); font: 500 12px 'DM Sans', sans-serif; cursor: pointer; }
+    .verdant-btn.primary { background: var(--green); color: #fff; border-color: var(--green); }
+    .email-body-text pre { white-space: pre-wrap; word-break: break-word; }
+    .action-menu { position: absolute; right: 0; top: 34px; width: 180px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 26px rgba(0,0,0,.12); padding: 6px; z-index: 1200; }
+    .action-menu button { width:100%; text-align:left; border:0; background:transparent; color:var(--text); padding:8px 10px; border-radius:8px; font:400 12px 'DM Sans', sans-serif; cursor:pointer; }
+    .action-menu button:hover { background: var(--surface2); }
+    .settings-grid { display: grid; gap: 10px; }
+  `;
+  document.head.appendChild(style);
+}
+
+function showOverlay(title, message, buttons) {
+  ensureStyles();
+  closeOverlay();
+  const overlay = document.createElement("div");
+  overlay.id = "verdant-overlay";
+  overlay.className = "verdant-overlay";
+  overlay.innerHTML = `
+    <div class="verdant-panel">
+      <h2>${escapeHtml(title)}</h2>
+      <p>${escapeHtml(message)}</p>
+      <div class="verdant-actions"></div>
+    </div>
+  `;
+  const actions = overlay.querySelector(".verdant-actions");
+  for (const btn of buttons) {
+    const el = document.createElement("button");
+    el.className = `verdant-btn ${btn.primary ? "primary" : ""}`;
+    el.textContent = btn.label;
+    el.onclick = btn.onClick;
+    actions.appendChild(el);
+  }
+  document.body.appendChild(overlay);
+}
+
+function closeOverlay() {
+  document.getElementById("verdant-overlay")?.remove();
+}
+
 function clearMockImmediately() {
   const list = document.querySelector(".email-list");
   if (list) list.innerHTML = "";
-}
-
-function renderOnboarding(message, options = {}) {
-  const {
-    showButton = true,
-    buttonText = "Connect Gmail",
-    action = "connect",
-    title = "Connect Your Gmail Account",
-  } = options;
-
-  const list = document.querySelector(".email-list");
-  if (!list) return;
-
-  list.innerHTML = `
-    <div class="email-item active" style="cursor: default;">
-      <div class="email-item-inner" style="padding: 16px;">
-        <div class="email-top">
-          <span class="email-sender">Verdant Setup</span>
-          <span class="email-time">Now</span>
-        </div>
-        <div class="email-subject">${escapeHtml(title)}</div>
-        <div class="email-preview">${escapeHtml(message)}</div>
-        ${showButton ? `<button id="onboarding-action" class="send-btn" data-action="${escapeHtml(action)}" style="margin-top: 12px; width: auto;">${escapeHtml(buttonText)}</button>` : ""}
-      </div>
-    </div>
-  `;
-
-  const button = document.getElementById("onboarding-action");
-  if (!button) return;
-
-  button.addEventListener("click", async () => {
-    button.disabled = true;
-    button.textContent = button.dataset.action === "connect" ? "Connecting..." : "Retrying...";
-
-    try {
-      if (button.dataset.action === "connect") {
-        await invoke("connect_gmail");
-      }
-      await initializeConnectedUI();
-    } catch (error) {
-      renderOnboarding(String(error), {
-        showButton: true,
-        buttonText: "Retry",
-        action: "retry",
-        title: "Action Failed",
-      });
-    }
-  });
 }
 
 function setListTitle(mailbox, count) {
@@ -104,13 +125,16 @@ function renderReadingPane(email) {
   const body = document.querySelector(".email-body-text");
   const avatar = document.querySelector(".meta-avatar");
 
-  if (subject) subject.textContent = email.subject || "(No Subject)";
-  if (from) from.textContent = email.sender || "Unknown Sender";
+  if (subject) subject.textContent = sanitizeUnicodeNoise(email.subject || "(No Subject)");
+  if (from) from.textContent = sanitizeUnicodeNoise(email.sender || "Unknown Sender");
   if (date) date.textContent = email.date || "";
-  if (body) body.innerHTML = email.body_html || `<pre>${escapeHtml(email.snippet || "")}</pre>`;
+  if (body) {
+    const html = sanitizeUnicodeNoise(email.body_html || "");
+    body.innerHTML = html || `<pre>${escapeHtml(sanitizeUnicodeNoise(email.snippet || ""))}</pre>`;
+  }
 
   if (avatar) {
-    const initials = (email.sender || "?")
+    const initials = sanitizeUnicodeNoise(email.sender || "?")
       .replace(/<.*?>/g, "")
       .trim()
       .split(/\s+/)
@@ -123,28 +147,30 @@ function renderReadingPane(email) {
 }
 
 async function markSelectedAsReadIfNeeded() {
-  if (!currentSelected || currentSelected.is_read) return;
-  currentSelected.is_read = true;
-  await invoke("set_email_read_status", { emailId: currentSelected.id, isRead: true });
+  if (!selectedEmail || selectedEmail.is_read) return;
+  selectedEmail.is_read = true;
+  await invoke("set_email_read_status", { emailId: selectedEmail.id, isRead: true });
   await refreshCounts();
 }
 
 async function selectEmail(email, row) {
-  currentSelected = email;
-
+  selectedEmail = email;
   document.querySelectorAll(".email-item").forEach((el) => el.classList.remove("active"));
   row.classList.add("active");
   row.classList.remove("unread");
-  const dot = row.querySelector(".unread-dot");
-  if (dot) dot.remove();
-
+  row.querySelector(".unread-dot")?.remove();
   renderReadingPane(email);
   await markSelectedAsReadIfNeeded();
 }
 
-function renderEmailList(emails) {
+function filteredEmails() {
+  return (currentEmails || []).filter(emailMatchesFilter);
+}
+
+function renderEmailList() {
   const list = document.querySelector(".email-list");
   if (!list) return;
+  const emails = filteredEmails();
 
   list.innerHTML = "";
   setListTitle(currentMailbox, emails.length);
@@ -156,11 +182,11 @@ function renderEmailList(emails) {
       ${email.is_read ? "" : '<div class="unread-dot"></div>'}
       <div class="email-item-inner">
         <div class="email-top">
-          <span class="email-sender">${escapeHtml(email.sender || "Unknown Sender")}</span>
+          <span class="email-sender">${escapeHtml(sanitizeUnicodeNoise(email.sender || "Unknown Sender"))}</span>
           <span class="email-time">${escapeHtml(shortDate(email.date))}</span>
         </div>
-        <div class="email-subject">${escapeHtml(email.subject || "(No Subject)")}</div>
-        <div class="email-preview">${escapeHtml(email.snippet || "")}</div>
+        <div class="email-subject">${escapeHtml(sanitizeUnicodeNoise(email.subject || "(No Subject)"))}</div>
+        <div class="email-preview">${escapeHtml(sanitizeUnicodeNoise(email.snippet || ""))}</div>
       </div>
     `;
 
@@ -173,14 +199,7 @@ function renderEmailList(emails) {
 
   if (emails.length > 0) {
     const first = list.querySelector(".email-item");
-    if (first) {
-      selectEmail(emails[0], first).catch(console.error);
-    }
-  } else {
-    renderOnboarding("No messages found for this mailbox.", {
-      showButton: false,
-      title: `${mailboxTitle(currentMailbox)} Is Empty`,
-    });
+    if (first) selectEmail(emails[0], first).catch(console.error);
   }
 }
 
@@ -193,7 +212,7 @@ function setBadge(navItem, value) {
   if (!navItem) return;
   let badge = navItem.querySelector(".nav-badge");
   if (value <= 0) {
-    if (badge) badge.remove();
+    badge?.remove();
     return;
   }
   if (!badge) {
@@ -213,16 +232,50 @@ async function refreshCounts() {
   setBadge(navByLabel("Snoozed"), counts.snoozed_total);
 }
 
-async function loadMailbox(mailbox) {
-  currentMailbox = mailbox;
+async function notifyNewEmails(nextInbox) {
+  const nextIds = new Set((nextInbox || []).map((m) => m.id));
+  const unseen = (nextInbox || []).filter((m) => !knownInboxIds.has(m.id) && !m.is_read);
+  knownInboxIds = nextIds;
 
+  if (!unseen.length) return;
+  if (!("Notification" in window)) return;
+
+  if (Notification.permission === "default") {
+    await Notification.requestPermission();
+  }
+  if (Notification.permission === "granted") {
+    const first = unseen[0];
+    new Notification("New email", {
+      body: `${sanitizeUnicodeNoise(first.sender)} - ${sanitizeUnicodeNoise(first.subject)}`,
+    });
+  }
+}
+
+async function loadLocalMailbox(mailbox) {
+  currentMailbox = mailbox;
+  currentEmails = await invoke("get_emails", { mailbox });
+  renderEmailList();
+  await refreshCounts();
+}
+
+async function syncMailboxInBackground(mailbox) {
   if (mailbox !== "STARRED") {
     await invoke("sync_mailbox", { mailbox });
   }
+  const latest = await invoke("get_emails", { mailbox });
+  if (mailbox === "INBOX") {
+    await notifyNewEmails(latest);
+  }
+  if (currentMailbox === mailbox) {
+    currentEmails = latest;
+    renderEmailList();
+    await refreshCounts();
+  }
+}
 
-  currentEmails = await invoke("get_emails", { mailbox });
-  renderEmailList(currentEmails || []);
-  await refreshCounts();
+async function openMailbox(mailbox) {
+  await loadLocalMailbox(mailbox);
+  syncMailboxInBackground(mailbox).catch((err) => console.error("Background sync failed:", err));
 }
 
 function bindMailboxNav() {
@@ -243,18 +296,37 @@ function bindMailboxNav() {
       ev.preventDefault();
       items.forEach((n) => n.classList.remove("active"));
       item.classList.add("active");
-      try {
-        await loadMailbox(map[label]);
-      } catch (error) {
-        renderOnboarding(String(error), {
-          showButton: true,
-          buttonText: "Retry Sync",
-          action: "retry",
-          title: "Sync Failed",
-        });
-      }
+      await openMailbox(map[label]);
     };
   }
+}
+
+function buildActionMenu(entries, anchor) {
+  document.getElementById("action-menu")?.remove();
+  const menu = document.createElement("div");
+  menu.id = "action-menu";
+  menu.className = "action-menu";
+  entries.forEach((entry) => {
+    const b = document.createElement("button");
+    b.textContent = entry.label;
+    b.onclick = async (e) => {
+      e.stopPropagation();
+      menu.remove();
+      await entry.onClick();
+      await refreshAfterAction();
+    };
+    menu.appendChild(b);
+  });
+  anchor.style.position = "relative";
+  anchor.appendChild(menu);
+  setTimeout(() => {
+    document.addEventListener("click", () => menu.remove(), { once: true });
+  }, 0);
+}
+
+async function refreshAfterAction() {
+  await loadLocalMailbox(currentMailbox);
+  syncMailboxInBackground(currentMailbox).catch(() => {});
 }
 
 function bindReadingActions() {
@@ -262,51 +334,137 @@ function bindReadingActions() {
   for (const button of buttons) {
     const title = button.getAttribute("title") || "";
 
-    if (title === "Label" || title === "More") {
-      button.style.display = "none";
-      continue;
-    }
-
     button.onclick = async () => {
-      if (!currentSelected) return;
-      try {
-        if (title === "Archive") {
-          await invoke("archive_email", { emailId: currentSelected.id });
-          await loadMailbox(currentMailbox);
-          return;
-        }
+      if (!selectedEmail) return;
 
-        if (title === "Delete") {
-          await invoke("trash_email", { emailId: currentSelected.id });
-          await loadMailbox(currentMailbox);
-          return;
-        }
-
-        if (title === "Mark unread") {
-          const next = currentSelected.is_read;
-          currentSelected.is_read = !next;
-          await invoke("set_email_read_status", { emailId: currentSelected.id, isRead: !next });
-          await loadMailbox(currentMailbox);
-          return;
-        }
-
-        if (title === "Star") {
-          await invoke("toggle_starred", { emailId: currentSelected.id });
-          if (currentMailbox === "STARRED") {
-            await loadMailbox(currentMailbox);
-          } else {
-            await refreshCounts();
-          }
-        }
-      } catch (error) {
-        alert(`Action failed: ${error}`);
+      if (title === "Archive") {
+        await invoke("archive_email", { emailId: selectedEmail.id });
+        await refreshAfterAction();
+        return;
+      }
+      if (title === "Delete") {
+        await invoke("trash_email", { emailId: selectedEmail.id });
+        await refreshAfterAction();
+        return;
+      }
+      if (title === "Mark unread") {
+        await invoke("set_email_read_status", { emailId: selectedEmail.id, isRead: !selectedEmail.is_read });
+        await refreshAfterAction();
+        return;
+      }
+      if (title === "Star") {
+        await invoke("toggle_starred", { emailId: selectedEmail.id });
+        await refreshAfterAction();
+        return;
+      }
+      if (title === "Label") {
+        buildActionMenu(
+          [
+            { label: "Set label: Work", onClick: () => invoke("set_email_labels", { emailId: selectedEmail.id, labels: "Work" }) },
+            { label: "Set label: Personal", onClick: () => invoke("set_email_labels", { emailId: selectedEmail.id, labels: "Personal" }) },
+            { label: "Set label: Finance", onClick: () => invoke("set_email_labels", { emailId: selectedEmail.id, labels: "Finance" }) },
+            { label: "Clear labels", onClick: () => invoke("set_email_labels", { emailId: selectedEmail.id, labels: "" }) },
+          ],
+          button
+        );
+        return;
+      }
+      if (title === "More") {
+        buildActionMenu(
+          [
+            { label: "Mark as Read", onClick: () => invoke("set_email_read_status", { emailId: selectedEmail.id, isRead: true }) },
+            { label: "Mark as Unread", onClick: () => invoke("set_email_read_status", { emailId: selectedEmail.id, isRead: false }) },
+            { label: "Toggle Star", onClick: () => invoke("toggle_starred", { emailId: selectedEmail.id }) },
+          ],
+          button
+        );
       }
     };
   }
 }
 
-function bindSendButton() {
-  const sendBtn = document.querySelector(".send-btn");
+function bindFilterChips() {
+  const chips = Array.from(document.querySelectorAll(".filter-chips .chip"));
+  chips.forEach((chip) => {
+    chip.onclick = () => {
+      chips.forEach((c) => c.classList.remove("active"));
+      chip.classList.add("active");
+      activeFilter = chip.textContent.trim();
+      renderEmailList();
+    };
+  });
+}
+
+function openSettingsModal(profile) {
+  showOverlay("Settings", `Signed in as ${profile.email}`, [{ label: "Close", onClick: closeOverlay }]);
+  const panel = document.querySelector("#verdant-overlay .verdant-panel");
+  if (!panel) return;
+
+  const grid = document.createElement("div");
+  grid.className = "settings-grid";
+  grid.innerHTML = `
+    <button class="verdant-btn" id="settings-sync">Sync Now</button>
+    <button class="verdant-btn" id="settings-clear">Clear Local DB</button>
+    <button class="verdant-btn" id="settings-logout" style="color:#8a3b3b;">Logout</button>
+  `;
+  panel.appendChild(grid);
+
+  panel.querySelector("#settings-sync")?.addEventListener("click", async () => {
+    await syncMailboxInBackground(currentMailbox);
+    closeOverlay();
+  });
+  panel.querySelector("#settings-clear")?.addEventListener("click", async () => {
+    await invoke("clear_local_data");
+    await openMailbox(currentMailbox);
+    closeOverlay();
+  });
+  panel.querySelector("#settings-logout")?.addEventListener("click", async () => {
+    await invoke("logout");
+    closeOverlay();
+    showOnboardingScreen("You were logged out.");
+  });
+}
+
+async function bindUserProfileAndSettings() {
+  const profile = await invoke("get_user_profile");
+  const avatar = document.querySelector(".sidebar .avatar");
+  const name = document.querySelector(".sidebar .user-name");
+  const email = document.querySelector(".sidebar .user-email");
+  const row = document.querySelector(".user-row");
+
+  if (avatar) avatar.textContent = profile.initials;
+  if (name) name.textContent = profile.name;
+  if (email) email.textContent = profile.email;
+  if (row) row.onclick = () => openSettingsModal(profile);
+}
+
+function showOnboardingScreen(message = "Connect your Gmail account to continue.") {
+  showOverlay("Connect Your Gmail Account", message, [
+    {
+      label: "Connect Gmail",
+      primary: true,
+      onClick: async () => {
+        try {
+          await invoke("connect_gmail");
+          closeOverlay();
+          await initializeConnectedUI();
+        } catch (error) {
+          showOnboardingScreen(String(error));
+        }
+      },
+    },
+  ]);
+}
+
+function startPeriodicSync() {
+  if (syncTimer) clearInterval(syncTimer);
+  syncTimer = setInterval(() => {
+    syncMailboxInBackground("INBOX").catch((e) => console.error("Periodic sync failed", e));
+  }, 45000);
+}
+
+function bindComposeSend() {
+  const sendBtn = document.querySelector(".compose-modal .send-btn");
   if (!sendBtn) return;
 
   sendBtn.addEventListener("click", async () => {
@@ -320,128 +478,51 @@ function bindSendButton() {
       return;
     }
 
-    try {
-      await invoke("send_email", { to, subject, body });
-      if (typeof window.closeCompose === "function") {
-        window.closeCompose();
-      }
-      fields.forEach((input) => {
-        input.value = "";
-      });
-      const textarea = document.querySelector(".modal-body textarea");
-      if (textarea) textarea.value = "";
-      await loadMailbox(currentMailbox);
-    } catch (error) {
-      alert(`Failed to send email: ${error}`);
-    }
+    await invoke("send_email", { to, subject, body });
+    if (typeof window.closeCompose === "function") window.closeCompose();
+    fields.forEach((f) => (f.value = ""));
+    const ta = document.querySelector(".modal-body textarea");
+    if (ta) ta.value = "";
+    await openMailbox(currentMailbox);
   });
-}
-
-function bindUserMenu() {
-  const userRow = document.querySelector(".user-row");
-  if (!userRow) return;
-
-  userRow.style.position = "relative";
-
-  const menu = document.createElement("div");
-  menu.id = "user-menu";
-  menu.style.cssText = "position:absolute; left:0; bottom:56px; width:220px; background:#eeece7; border:1px solid #d8d4cb; border-radius:10px; padding:8px; display:none; z-index:1000;";
-  menu.innerHTML = `
-    <button data-action="sync" style="width:100%; text-align:left; background:transparent; border:0; padding:8px; border-radius:8px; cursor:pointer;">Sync Now</button>
-    <button data-action="clear" style="width:100%; text-align:left; background:transparent; border:0; padding:8px; border-radius:8px; cursor:pointer;">Clear Local DB</button>
-    <button data-action="logout" style="width:100%; text-align:left; background:transparent; border:0; padding:8px; border-radius:8px; cursor:pointer; color:#8a3b3b;">Logout</button>
-  `;
-  userRow.appendChild(menu);
-
-  userRow.addEventListener("click", (e) => {
-    e.stopPropagation();
-    menu.style.display = menu.style.display === "none" ? "block" : "none";
-  });
-
-  document.addEventListener("click", () => {
-    menu.style.display = "none";
-  });
-
-  menu.addEventListener("click", async (e) => {
-    e.stopPropagation();
-    const action = e.target?.dataset?.action;
-    if (!action) return;
-
-    try {
-      if (action === "sync") {
-        await loadMailbox(currentMailbox);
-      }
-      if (action === "clear") {
-        await invoke("clear_local_data");
-        await loadMailbox(currentMailbox);
-      }
-      if (action === "logout") {
-        await invoke("logout");
-        clearMockImmediately();
-        renderOnboarding("You have been logged out. Connect Gmail again to continue.", {
-          showButton: true,
-          buttonText: "Connect Gmail",
-          action: "connect",
-          title: "Logged Out",
-        });
-      }
-    } catch (error) {
-      alert(`User action failed: ${error}`);
-    }
-  });
-}
-
-async function bindUserProfile() {
-  const profile = await invoke("get_user_profile");
-  const avatar = document.querySelector(".sidebar .avatar");
-  const name = document.querySelector(".sidebar .user-name");
-  const email = document.querySelector(".sidebar .user-email");
-
-  if (avatar) avatar.textContent = profile.initials;
-  if (name) name.textContent = profile.name;
-  if (email) email.textContent = profile.email;
 }
 
 async function initializeConnectedUI() {
   bindMailboxNav();
   bindReadingActions();
-  bindSendButton();
-  bindUserMenu();
-  await bindUserProfile();
-  await loadMailbox("INBOX");
+  bindFilterChips();
+  bindComposeSend();
+  await bindUserProfileAndSettings();
+
+  const inboxNow = await invoke("get_emails", { mailbox: "INBOX" });
+  knownInboxIds = new Set((inboxNow || []).map((m) => m.id));
+
+  await openMailbox("INBOX");
+  startPeriodicSync();
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  ensureStyles();
   clearMockImmediately();
 
   try {
     const status = await invoke("auth_status");
-
     if (!status.has_client_id) {
-      renderOnboarding("Missing GOOGLE_CLIENT_ID in .env. Add credentials, restart app, then connect.", {
-        showButton: false,
-        title: "Configuration Required",
-      });
+      showOverlay("Configuration Required", "Missing GOOGLE_CLIENT_ID in .env. Add credentials and restart Verdant.", [
+        { label: "Close", onClick: closeOverlay },
+      ]);
       return;
     }
 
     if (!status.connected) {
-      renderOnboarding("Connect your Gmail account to start syncing real mail.", {
-        showButton: true,
-        buttonText: "Connect Gmail",
-        action: "connect",
-        title: "Connect Your Gmail Account",
-      });
+      showOnboardingScreen();
       return;
     }
 
     await initializeConnectedUI();
   } catch (error) {
-    renderOnboarding(String(error), {
-      showButton: true,
-      buttonText: "Retry",
-      action: "retry",
-      title: "Initialization Failed",
-    });
+    showOverlay("Initialization Failed", String(error), [
+      { label: "Retry", primary: true, onClick: () => window.location.reload() },
+    ]);
   }
 });

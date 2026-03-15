@@ -70,12 +70,29 @@ fn strip_confusable_chars(input: &str) -> String {
         .filter(|c| {
             !matches!(
                 *c,
+                '\u{00AD}'
+                    | '\u{034F}'
+                    | '\u{061C}'
+                    | '\u{180E}'
                 '\u{200B}'
                     | '\u{200C}'
                     | '\u{200D}'
                     | '\u{200E}'
                     | '\u{200F}'
+                    | '\u{202A}'
+                    | '\u{202B}'
+                    | '\u{202C}'
+                    | '\u{202D}'
+                    | '\u{202E}'
                     | '\u{2060}'
+                    | '\u{2061}'
+                    | '\u{2062}'
+                    | '\u{2063}'
+                    | '\u{2064}'
+                    | '\u{2066}'
+                    | '\u{2067}'
+                    | '\u{2068}'
+                    | '\u{2069}'
                     | '\u{FEFF}'
             )
         })
@@ -210,10 +227,26 @@ async fn sync_mailbox_internal(state: &DbState, mailbox: &str) -> Result<(), Str
             continue;
         };
 
-        let detail_url = format!(
-            "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=full",
-            id
-        );
+        // Fast path for existing emails: keep metadata fresh but skip full-body fetch.
+        let exists = {
+            let conn = state.conn.lock().await;
+            let count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM emails WHERE id = ?1", [id], |r| r.get(0))
+                .unwrap_or(0);
+            count > 0
+        };
+
+        let detail_url = if exists {
+            format!(
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date",
+                id
+            )
+        } else {
+            format!(
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=full",
+                id
+            )
+        };
         let detail = client
             .get(detail_url)
             .bearer_auth(&token)
@@ -255,10 +288,16 @@ async fn sync_mailbox_internal(state: &DbState, mailbox: &str) -> Result<(), Str
         );
         let date = header_value(&headers, "Date").unwrap_or_else(|| "Unknown Date".to_string());
 
-        let body_html = detail_json
-            .get("payload")
-            .and_then(extract_body)
-            .unwrap_or_else(|| format!("<pre>{}</pre>", snippet));
+        let body_html = if exists {
+            let conn = state.conn.lock().await;
+            conn.query_row("SELECT body_html FROM emails WHERE id = ?1", [id], |r| r.get::<_, String>(0))
+                .unwrap_or_else(|_| format!("<pre>{}</pre>", snippet))
+        } else {
+            detail_json
+                .get("payload")
+                .and_then(extract_body)
+                .unwrap_or_else(|| format!("<pre>{}</pre>", snippet))
+        };
 
         let labels = detail_json
             .get("labelIds")
@@ -386,6 +425,17 @@ async fn toggle_starred(state: State<'_, DbState>, email_id: String) -> Result<(
     conn.execute(
         "UPDATE emails SET starred = CASE WHEN starred = 1 THEN 0 ELSE 1 END WHERE id = ?1",
         [email_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_email_labels(state: State<'_, DbState>, email_id: String, labels: String) -> Result<(), String> {
+    let conn = state.conn.lock().await;
+    conn.execute(
+        "UPDATE emails SET labels = ?1 WHERE id = ?2",
+        (labels, email_id),
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -607,6 +657,7 @@ pub fn run() {
             get_emails,
             set_email_read_status,
             toggle_starred,
+            set_email_labels,
             archive_email,
             trash_email,
             get_mailbox_counts,
