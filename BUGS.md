@@ -1,0 +1,3 @@
+- Showing newest mail after fetching new mails.
+- Plain Text on success message "Verdant connected successfully." + Tab name isnt user friendly
+- Formatting issues for some mails

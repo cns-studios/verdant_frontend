@@ -1,0 +1,7 @@
+- Markdown support in Compose window
+- If not MD selected, plain-text mails should still have a BG
+- Settings page with Tabs, one for Keybinds
+- Attaching contents to Emails
+- Real Usericons for sender mails if available
+- Editing/Seding drafts
+- Drafting as a sending option
