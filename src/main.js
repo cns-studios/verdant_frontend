@@ -3,6 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 const PAGE_SIZE = 50;
 const SYNC_INTERVAL_MS = 45000;
 const RESYNC_COOLDOWN_MS = 5 * 60 * 1000;
+const HOTKEY_COOLDOWN_MS = {
+  compose: 350,
+  refresh: 1800,
+  settings: 1200,
+  search: 250,
+};
 
 let currentMailbox = "INBOX";
 let currentEmails = [];
@@ -13,6 +19,7 @@ let searchQuery = "";
 let syncTimer = null;
 let knownInboxIds = new Set();
 let lastSynced = new Map();
+let lastHotkeyAt = new Map();
 let composeAttachments = [];
 let composeSendMode = "plain";
 
@@ -137,6 +144,17 @@ function ensureStyles() {
     .settings-row { display:grid; grid-template-columns: 1fr 160px; align-items:center; gap:10px; }
     .settings-row input { height:34px; border-radius:8px; border:1px solid var(--border); background: var(--bg); padding:0 10px; font:400 12px 'DM Sans', sans-serif; }
     .settings-switch { display:flex; align-items:center; gap:8px; font:400 12px 'DM Sans', sans-serif; color:var(--text); }
+    .settings-tabs { display:flex; gap:8px; margin-top:10px; border-bottom:1px solid var(--border); padding-bottom:10px; }
+    .settings-tab { border:1px solid var(--border); background: var(--surface2); color:var(--text-mid); border-radius:999px; padding:6px 12px; font:500 12px 'DM Sans', sans-serif; cursor:pointer; }
+    .settings-tab.active { background: var(--green-pale); border-color: var(--green-muted); color: var(--green); }
+    .settings-pane { display:none; margin-top:12px; }
+    .settings-pane.active { display:grid; gap:10px; }
+    .settings-card { border:1px solid var(--border); border-radius:10px; background: var(--bg); padding:12px; display:grid; gap:8px; }
+    .settings-info-row { display:flex; justify-content:space-between; gap:12px; font:400 12px 'DM Sans', sans-serif; color:var(--text-mid); }
+    .settings-info-row strong { color: var(--text); font-weight:500; }
+    .settings-help { font:400 12px/1.5 'DM Sans', sans-serif; color:var(--text-mid); margin-top:2px; }
+    .settings-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+    .settings-danger { color:#8a3b3b; border-color:#dcb9b9; }
     .toast-wrap { position: fixed; top:12px; left:50%; transform: translateX(-50%); z-index:2400; display:grid; gap:8px; }
     .toast { min-width:220px; max-width:520px; padding:10px 14px; border-radius:10px; border:1px solid var(--border); background: var(--surface); color: var(--text); font:500 12px 'DM Sans', sans-serif; box-shadow:0 10px 28px rgba(0,0,0,.12); animation: toast-in .22s ease forwards; }
     .toast.info { border-color: var(--green-muted); }
@@ -174,6 +192,18 @@ function showToast(message, type = "info", timeout = 2200) {
   toast.textContent = message;
   wrap.appendChild(toast);
   setTimeout(() => toast.remove(), timeout);
+}
+
+function canRunHotkey(action) {
+  const cooldown = HOTKEY_COOLDOWN_MS[action] || 0;
+  if (cooldown <= 0) return true;
+
+  const now = Date.now();
+  const last = lastHotkeyAt.get(action) || 0;
+  if (now - last < cooldown) return false;
+
+  lastHotkeyAt.set(action, now);
+  return true;
 }
 
 function showOverlay(title, message, buttons) {
@@ -689,7 +719,30 @@ function bindSearch() {
   });
 }
 
-function openSettingsModal(profile) {
+async function openSettingsModal(profile) {
+  let auth = { connected: true };
+  let counts = {
+    inbox_total: 0,
+    inbox_unread: 0,
+    starred_total: 0,
+    sent_total: 0,
+    drafts_total: 0,
+    archive_total: 0,
+  };
+
+  try {
+    [auth, counts] = await Promise.all([
+      invoke("auth_status"),
+      invoke("get_mailbox_counts"),
+    ]);
+  } catch (error) {
+    console.warn("Failed to load extended settings details", error);
+  }
+
+  const lastInboxSync = lastSynced.get("INBOX")
+    ? new Date(lastSynced.get("INBOX")).toLocaleString()
+    : "Not synced in this session";
+
   showOverlay("Settings", `Signed in as ${profile.email}`, []);
   const panel = document.querySelector("#verdant-overlay .verdant-panel");
   if (!panel) return;
@@ -697,17 +750,61 @@ function openSettingsModal(profile) {
   const grid = document.createElement("div");
   grid.className = "settings-grid";
   grid.innerHTML = `
-    <label class="settings-switch"><input type="checkbox" id="hk-enabled" ${hotkeys.enabled ? "checked" : ""}> Enable keyboard shortcuts</label>
-    <div class="settings-row"><span>Compose</span><input id="hk-compose" value="${escapeHtml(hotkeys.compose)}" /></div>
-    <div class="settings-row"><span>Refresh</span><input id="hk-refresh" value="${escapeHtml(hotkeys.refresh)}" /></div>
-    <div class="settings-row"><span>Settings</span><input id="hk-settings" value="${escapeHtml(hotkeys.settings)}" /></div>
-    <div class="settings-row"><span>Search</span><input id="hk-search" value="${escapeHtml(hotkeys.search)}" /></div>
-    <button class="verdant-btn" id="settings-save">Save Shortcuts</button>
-    <button class="verdant-btn" id="settings-sync">Sync Now</button>
-    <button class="verdant-btn" id="settings-clear">Clear Local DB</button>
-    <button class="verdant-btn" id="settings-logout" style="color:#8a3b3b;">Logout</button>
+    <div class="settings-tabs">
+      <button class="settings-tab active" data-tab="account">Account</button>
+      <button class="settings-tab" data-tab="shortcuts">Shortcuts</button>
+      <button class="settings-tab" data-tab="app">App</button>
+    </div>
+
+    <section class="settings-pane active" data-pane="account">
+      <div class="settings-card">
+        <div class="settings-info-row"><span>Name</span><strong>${escapeHtml(profile.name || "User")}</strong></div>
+        <div class="settings-info-row"><span>Email</span><strong>${escapeHtml(profile.email || "-")}</strong></div>
+        <div class="settings-info-row"><span>Initials</span><strong>${escapeHtml(profile.initials || "U")}</strong></div>
+        <div class="settings-info-row"><span>Gmail Status</span><strong>${auth.connected ? "Connected" : "Disconnected"}</strong></div>
+        <div class="settings-info-row"><span>Inbox</span><strong>${counts.inbox_unread} unread / ${counts.inbox_total} total</strong></div>
+        <div class="settings-info-row"><span>Last Inbox Sync</span><strong>${escapeHtml(lastInboxSync)}</strong></div>
+      </div>
+      <div class="settings-actions">
+        <button class="verdant-btn settings-danger" id="settings-logout">Logout</button>
+      </div>
+    </section>
+
+    <section class="settings-pane" data-pane="shortcuts">
+      <label class="settings-switch"><input type="checkbox" id="hk-enabled" ${hotkeys.enabled ? "checked" : ""}> Enable keyboard shortcuts</label>
+      <div class="settings-row"><span>Compose</span><input id="hk-compose" value="${escapeHtml(hotkeys.compose)}" /></div>
+      <div class="settings-row"><span>Refresh</span><input id="hk-refresh" value="${escapeHtml(hotkeys.refresh)}" /></div>
+      <div class="settings-row"><span>Settings</span><input id="hk-settings" value="${escapeHtml(hotkeys.settings)}" /></div>
+      <div class="settings-row"><span>Search</span><input id="hk-search" value="${escapeHtml(hotkeys.search)}" /></div>
+      <div class="settings-actions">
+        <button class="verdant-btn" id="settings-save">Save Shortcuts</button>
+      </div>
+    </section>
+
+    <section class="settings-pane" data-pane="app">
+      <div class="settings-card">
+        <div class="settings-help">
+          Verdant keeps a local mail cache database on your device to make loading and searching faster.
+          Clearing the local DB only removes cached messages on this device. Your Gmail account and server-side messages are not deleted.
+        </div>
+      </div>
+      <div class="settings-actions">
+        <button class="verdant-btn" id="settings-sync">Sync Emails Now</button>
+        <button class="verdant-btn" id="settings-clear">Clear Local DB</button>
+      </div>
+    </section>
   `;
   panel.appendChild(grid);
+
+  const tabs = Array.from(panel.querySelectorAll(".settings-tab"));
+  const panes = Array.from(panel.querySelectorAll(".settings-pane"));
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const target = tab.getAttribute("data-tab");
+      tabs.forEach((t) => t.classList.toggle("active", t === tab));
+      panes.forEach((pane) => pane.classList.toggle("active", pane.getAttribute("data-pane") === target));
+    });
+  });
 
   panel.querySelector("#settings-save")?.addEventListener("click", () => {
     hotkeys = {
@@ -725,7 +822,8 @@ function openSettingsModal(profile) {
   panel.querySelector("#settings-sync")?.addEventListener("click", async () => {
     showToast("Fetching mails...");
     await syncMailboxInBackground(currentMailbox);
-    closeOverlay();
+    await refreshCounts();
+    showToast("Sync complete");
   });
 
   panel.querySelector("#settings-clear")?.addEventListener("click", async () => {
@@ -752,7 +850,7 @@ async function bindUserProfileAndSettings() {
   if (avatar) avatar.textContent = profile.initials;
   if (name) name.textContent = profile.name;
   if (email) email.textContent = profile.email;
-  if (row) row.onclick = () => openSettingsModal(profile);
+  if (row) row.onclick = () => openSettingsModal(profile).catch(console.error);
 }
 
 function showOnboardingScreen(message = "Connect your Gmail account to continue.") {
@@ -1018,12 +1116,14 @@ function bindHotkeys() {
 
     if (combo === hotkeys.compose) {
       event.preventDefault();
+      if (!canRunHotkey("compose")) return;
       if (typeof window.openCompose === "function") window.openCompose();
       return;
     }
 
     if (combo === hotkeys.refresh) {
       event.preventDefault();
+      if (!canRunHotkey("refresh")) return;
       showToast("Fetching mails...");
       await syncMailboxInBackground(currentMailbox);
       return;
@@ -1031,13 +1131,15 @@ function bindHotkeys() {
 
     if (combo === hotkeys.settings) {
       event.preventDefault();
+      if (!canRunHotkey("settings")) return;
       const profile = await invoke("get_user_profile");
-      openSettingsModal(profile);
+      await openSettingsModal(profile);
       return;
     }
 
     if (combo === hotkeys.search) {
       event.preventDefault();
+      if (!canRunHotkey("search")) return;
       const search = document.querySelector(".search-bar input");
       search?.focus();
     }
