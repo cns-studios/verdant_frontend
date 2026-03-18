@@ -369,7 +369,6 @@ function isImportant(email) {
 function emailMatchesFilter(email) {
   if (activeFilter === "Important" && !isImportant(email)) return false;
   if (activeFilter === "Attachments" && !hasEmailAttachments(email)) return false;
-  if (activeFilter === "Flagged" && !email.starred) return false;
 
   if (searchQuery) {
     const hay = `${email.subject || ""} ${email.sender || ""} ${email.snippet || ""}`.toLowerCase();
