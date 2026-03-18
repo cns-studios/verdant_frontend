@@ -84,6 +84,70 @@ function sanitizeUnicodeNoise(input) {
     .trim();
 }
 
+function extractSenderAddress(sender) {
+  const clean = sanitizeUnicodeNoise(sender || "");
+  const bracketMatch = clean.match(/<([^>]+)>/);
+  let email = (bracketMatch ? bracketMatch[1] : clean).trim().toLowerCase();
+  if (!email.includes("@")) {
+    const token = email.split(/[\s,;]+/).find((part) => part.includes("@"));
+    email = token ? token.trim().toLowerCase() : "";
+  }
+  return email;
+}
+
+function senderInitials(sender) {
+  const raw = sanitizeUnicodeNoise(sender || "?").replace(/<.*?>/g, "").trim();
+  const parts = raw.split(/\s+/).filter(Boolean);
+  if (parts.length) {
+    return parts.slice(0, 2).map((w) => w[0] || "").join("").toUpperCase() || "?";
+  }
+  const addr = extractSenderAddress(raw);
+  if (!addr) return "?";
+  return (addr[0] || "?").toUpperCase();
+}
+
+function senderAvatarUrls(sender) {
+  const email = extractSenderAddress(sender);
+  if (!email || !email.includes("@")) return [];
+  const domain = email.split("@")[1];
+  if (!domain || domain === "localhost") return [];
+
+  return [
+    `https://logo.clearbit.com/${encodeURIComponent(domain)}`,
+    `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`,
+  ];
+}
+
+function applySenderAvatar(container, sender) {
+  if (!container) return;
+  container.classList.remove("has-image");
+  container.innerHTML = "";
+  container.textContent = senderInitials(sender);
+
+  const urls = senderAvatarUrls(sender);
+  if (!urls.length) return;
+
+  const img = document.createElement("img");
+  img.alt = "Sender icon";
+  let idx = 0;
+
+  img.onload = () => {
+    container.classList.add("has-image");
+    container.textContent = "";
+    container.innerHTML = "";
+    container.appendChild(img);
+  };
+
+  img.onerror = () => {
+    idx += 1;
+    if (idx < urls.length) {
+      img.src = urls[idx];
+    }
+  };
+
+  img.src = urls[idx];
+}
+
 function formatListDate(raw) {
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return raw || "";
@@ -137,7 +201,12 @@ function ensureStyles() {
     .verdant-actions { display:flex; gap:10px; justify-content:flex-end; }
     .verdant-btn { padding:8px 14px; border-radius:8px; border:1px solid var(--border); background: var(--surface2); color: var(--text); font: 500 12px 'DM Sans', sans-serif; cursor:pointer; }
     .verdant-btn.primary { background: var(--green); color:#fff; border-color: var(--green); }
+    .email-item-main { display:flex; align-items:flex-start; gap:10px; }
+    .sender-avatar { width:30px; height:30px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font:600 11px 'DM Sans', sans-serif; color:#fff; background: linear-gradient(135deg, var(--green-mid), var(--green-light)); overflow:hidden; }
+    .sender-avatar img, .meta-avatar img { width:100%; height:100%; object-fit:cover; display:block; }
+    .sender-avatar.has-image, .meta-avatar.has-image { background: var(--surface2); color: transparent; }
     .email-body-text pre { white-space: pre-wrap; word-break: break-word; background: var(--surface); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+
     .action-menu { position:absolute; right:0; top:34px; width:190px; background: var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:0 12px 26px rgba(0,0,0,.12); padding:6px; z-index:1300; }
     .action-menu button { width:100%; text-align:left; border:0; background:transparent; color:var(--text); padding:8px 10px; border-radius:8px; font:400 12px 'DM Sans', sans-serif; cursor:pointer; }
     .action-menu button:hover { background: var(--surface2); }
@@ -318,7 +387,8 @@ function renderRecipientsLine(email) {
     .filter(Boolean);
 
   const merged = [...toList, ...ccList];
-  let collapsed = "to me";
+  const mailbox = (email.mailbox || "").toUpperCase();
+  let collapsed = mailbox === "SENT" ? "recipients loading..." : "to me";
   if (merged.length === 1) collapsed = `to ${merged[0]}`;
   if (merged.length > 1) collapsed = `to ${merged[0]}, +${merged.length - 1} others`;
 
@@ -352,15 +422,7 @@ function renderReadingPane(email) {
   }
 
   if (avatar) {
-    const initials = sanitizeUnicodeNoise(email.sender || "?")
-      .replace(/<.*?>/g, "")
-      .trim()
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((w) => w[0] || "")
-      .join("")
-      .toUpperCase();
-    avatar.textContent = initials || "?";
+    applySenderAvatar(avatar, email.sender || "");
   }
 
   renderRecipientsLine(email);
@@ -432,15 +494,20 @@ function renderEmailList(animate = false) {
     row.className = `email-item ${email.is_read ? "" : "unread"}`.trim();
     row.innerHTML = `
       ${email.is_read ? "" : '<div class="unread-dot"></div>'}
-      <div class="email-item-inner">
-        <div class="email-top">
-          <span class="email-sender">${escapeHtml(sanitizeUnicodeNoise(email.sender || "Unknown Sender"))}</span>
-          <span class="email-time">${escapeHtml(formatListDate(email.date))}</span>
+      <div class="email-item-main">
+        <div class="sender-avatar"></div>
+        <div class="email-item-inner">
+          <div class="email-top">
+            <span class="email-sender">${escapeHtml(sanitizeUnicodeNoise(email.sender || "Unknown Sender"))}</span>
+            <span class="email-time">${escapeHtml(formatListDate(email.date))}</span>
+          </div>
+          <div class="email-subject">${escapeHtml(sanitizeUnicodeNoise(email.subject || "(No Subject)"))}</div>
+          <div class="email-preview">${escapeHtml(sanitizeUnicodeNoise(email.snippet || ""))}</div>
         </div>
-        <div class="email-subject">${escapeHtml(sanitizeUnicodeNoise(email.subject || "(No Subject)"))}</div>
-        <div class="email-preview">${escapeHtml(sanitizeUnicodeNoise(email.snippet || ""))}</div>
       </div>
     `;
+
+    applySenderAvatar(row.querySelector(".sender-avatar"), email.sender || "");
 
     row.addEventListener("click", () => {
       selectEmail(email, row).catch(console.error);

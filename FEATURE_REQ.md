@@ -1,1 +1,0 @@
-- Real Usericons for sender mails if available

@@ -345,7 +345,21 @@ fn mailbox_label(mailbox: &str) -> Option<&'static str> {
     }
 }
 
-async fn sync_mailbox_internal(state: &DbState, mailbox: &str) -> Result<(), String> {
+fn infer_mailbox_from_labels(labels: &str, fallback: &str) -> String {
+    let parts: Vec<&str> = labels.split(',').collect();
+    if parts.iter().any(|l| *l == "SENT") {
+        return "SENT".to_string();
+    }
+    if parts.iter().any(|l| *l == "DRAFT") {
+        return "DRAFT".to_string();
+    }
+    if parts.iter().any(|l| *l == "INBOX") {
+        return "INBOX".to_string();
+    }
+    fallback.to_string()
+}
+
+async fn sync_mailbox_internal(state: &DbState, mailbox: &str, max_results: usize) -> Result<(), String> {
     let Some(label) = mailbox_label(mailbox) else {
         return Ok(());
     };
@@ -354,11 +368,11 @@ async fn sync_mailbox_internal(state: &DbState, mailbox: &str) -> Result<(), Str
     let token = ensure_token(state).await?.access_token;
 
     let list_url = if mailbox == "DRAFT" {
-        "https://gmail.googleapis.com/gmail/v1/users/me/drafts?maxResults=50".to_string()
+        format!("https://gmail.googleapis.com/gmail/v1/users/me/drafts?maxResults={}", max_results)
     } else {
         format!(
-            "https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds={}&maxResults=50",
-            label
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds={}&maxResults={}",
+            label, max_results
         )
     };
     let res = client
@@ -430,7 +444,7 @@ async fn sync_mailbox_internal(state: &DbState, mailbox: &str) -> Result<(), Str
             )
         } else if exists {
             format!(
-                "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date",
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=To&metadataHeaders=Cc",
                 id
             )
         } else {
@@ -560,7 +574,7 @@ async fn sync_mailbox_internal(state: &DbState, mailbox: &str) -> Result<(), Str
                 &body_html,
                 &date,
                 is_read as i32,
-                mailbox,
+                infer_mailbox_from_labels(&labels, mailbox),
                 &labels,
                 internal_ts,
             ),
