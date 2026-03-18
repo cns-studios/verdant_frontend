@@ -524,6 +524,12 @@
 
   .modal-close:hover { background: rgba(255,255,255,0.25); }
 
+  .modal-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
   .modal-fields { padding: 0 18px; }
 
   .modal-field {
@@ -550,7 +556,7 @@
 
   .modal-body { margin: 4px 18px 0; min-height: 140px; }
 
-  .modal-body textarea {
+  .compose-editor {
     width: 100%;
     min-height: 140px;
     border: none;
@@ -559,12 +565,119 @@
     font-size: 13.5px;
     color: var(--text);
     outline: none;
-    resize: none;
     line-height: 1.65;
     padding: 12px 0;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
-  .modal-body textarea::placeholder { color: var(--text-muted); }
+  .compose-editor:focus { outline: none; }
+
+  .compose-editor:empty::before {
+    content: attr(data-placeholder);
+    color: var(--text-muted);
+    pointer-events: none;
+  }
+
+  .compose-editor h2 {
+    font: 500 20px 'Fraunces', serif;
+    color: var(--text);
+    margin: 8px 0;
+  }
+
+  .compose-editor blockquote {
+    border-left: 3px solid var(--green-light);
+    background: var(--green-pale);
+    margin: 8px 0;
+    padding: 8px 10px;
+    color: var(--text-mid);
+  }
+
+  .compose-editor pre {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    margin: 8px 0;
+    overflow-x: auto;
+  }
+
+  .compose-editor ul {
+    margin: 8px 0 8px 18px;
+  }
+
+  .compose-format-toolbar {
+    display: none;
+    margin: 4px 18px 0;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .compose-format-toolbar.open { display: flex; }
+
+  .compose-format-btn {
+    border: 1px solid var(--border);
+    background: var(--white);
+    color: var(--text-mid);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+  }
+
+  .compose-format-btn:hover {
+    background: var(--green-pale);
+    color: var(--green);
+  }
+
+  .modal-tool.active {
+    background: var(--green-pale);
+    border-color: var(--green-muted);
+    color: var(--green);
+  }
+
+  .compose-attachments {
+    margin: 0 18px 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 20px;
+  }
+
+  .compose-attachment {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--green-muted);
+    background: var(--green-pale);
+    color: var(--green);
+    font-size: 11px;
+    max-width: 100%;
+  }
+
+  .compose-attachment-name {
+    max-width: 180px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .compose-attachment-remove {
+    border: none;
+    background: transparent;
+    color: var(--green);
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+  }
 
   .modal-footer {
     padding: 12px 18px;
@@ -862,34 +975,47 @@
   <div class="compose-modal">
     <div class="modal-header">
       <span class="modal-title">New Message</span>
-      <button class="modal-close" onclick="closeCompose()">×</button>
+      <div class="modal-header-actions">
+        <button class="modal-close" id="compose-max-btn" title="Maximize" aria-label="Maximize">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"></rect></svg>
+        </button>
+        <button class="modal-close" onclick="closeCompose()">×</button>
+      </div>
     </div>
     <div class="modal-fields">
       <div class="modal-field">
         <label>To</label>
-        <input type="email" placeholder="recipient@example.com">
+        <input id="compose-to" type="email" placeholder="recipient@example.com">
       </div>
       <div class="modal-field">
         <label>Cc</label>
-        <input type="email" placeholder="Add cc…">
+        <input id="compose-cc" type="email" placeholder="Add cc…">
       </div>
       <div class="modal-field">
         <label>Re</label>
-        <input type="text" placeholder="Subject">
+        <input id="compose-subject" type="text" placeholder="Subject">
       </div>
     </div>
     <div class="modal-body">
-      <textarea placeholder="Write your message…"></textarea>
+      <div id="compose-body" class="compose-editor" contenteditable="true" data-placeholder="Write your message…"></div>
     </div>
+    <div class="compose-format-toolbar" id="compose-format-toolbar">
+      <button class="compose-format-btn" type="button" data-format="bold">Bold</button>
+      <button class="compose-format-btn" type="button" data-format="header">Header</button>
+      <button class="compose-format-btn" type="button" data-format="italic">Cursive</button>
+      <button class="compose-format-btn" type="button" data-format="list">List</button>
+      <button class="compose-format-btn" type="button" data-format="quote">Quote</button>
+      <button class="compose-format-btn" type="button" data-format="code">Code</button>
+      <button class="compose-format-btn" type="button" data-format="clear">Clear formatting</button>
+    </div>
+    <div class="compose-attachments" id="compose-attachments"></div>
+    <input id="compose-file-input" type="file" multiple hidden>
     <div class="modal-footer">
       <div class="modal-tools">
-        <button class="modal-tool" title="Attach file">
+        <button class="modal-tool" id="compose-attach-btn" title="Attach file">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         </button>
-        <button class="modal-tool" title="Emoji">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-        </button>
-        <button class="modal-tool" title="Format text">
+        <button class="modal-tool" id="compose-format-btn" title="Format text">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>
         </button>
       </div>
@@ -904,9 +1030,11 @@
 <script>
   function openCompose() {
     document.getElementById('composeModal').classList.add('open');
+    window.dispatchEvent(new CustomEvent('verdant-compose-opened'));
   }
   function closeCompose() {
     document.getElementById('composeModal').classList.remove('open');
+    window.dispatchEvent(new CustomEvent('verdant-compose-closed'));
   }
   function handleOverlayClick(e) {
     if (e.target === document.getElementById('composeModal')) closeCompose();

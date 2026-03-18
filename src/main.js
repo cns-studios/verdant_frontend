@@ -13,6 +13,8 @@ let searchQuery = "";
 let syncTimer = null;
 let knownInboxIds = new Set();
 let lastSynced = new Map();
+let composeAttachments = [];
+let composeSendMode = "plain";
 
 const defaultHotkeys = {
   enabled: true,
@@ -127,7 +129,7 @@ function ensureStyles() {
     .verdant-actions { display:flex; gap:10px; justify-content:flex-end; }
     .verdant-btn { padding:8px 14px; border-radius:8px; border:1px solid var(--border); background: var(--surface2); color: var(--text); font: 500 12px 'DM Sans', sans-serif; cursor:pointer; }
     .verdant-btn.primary { background: var(--green); color:#fff; border-color: var(--green); }
-    .email-body-text pre { white-space: pre-wrap; word-break: break-word; }
+    .email-body-text pre { white-space: pre-wrap; word-break: break-word; background: var(--surface); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
     .action-menu { position:absolute; right:0; top:34px; width:190px; background: var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:0 12px 26px rgba(0,0,0,.12); padding:6px; z-index:1300; }
     .action-menu button { width:100%; text-align:left; border:0; background:transparent; color:var(--text); padding:8px 10px; border-radius:8px; font:400 12px 'DM Sans', sans-serif; cursor:pointer; }
     .action-menu button:hover { background: var(--surface2); }
@@ -192,6 +194,11 @@ function showOverlay(title, message, buttons) {
   `;
 
   overlay.querySelector(".verdant-close")?.addEventListener("click", () => closeOverlay());
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) {
+      closeOverlay();
+    }
+  });
   const actions = overlay.querySelector(".verdant-actions");
   for (const btn of buttons) {
     const el = document.createElement("button");
@@ -759,27 +766,174 @@ function startPeriodicSync() {
   }, SYNC_INTERVAL_MS);
 }
 
-function injectComposeMaximizeButton() {
-  if (document.getElementById("compose-max-btn")) return;
-  const header = document.querySelector(".compose-modal .modal-header");
-  if (!header) return;
-
-  const closeBtn = header.querySelector(".modal-close");
-  const maxBtn = document.createElement("button");
-  maxBtn.id = "compose-max-btn";
-  maxBtn.className = "modal-close";
-  maxBtn.title = "Maximize";
-  maxBtn.setAttribute("aria-label", "Maximize");
-  maxBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1"></rect></svg>';
-  maxBtn.style.marginRight = "6px";
+function bindComposeWindowControls() {
+  const maxBtn = document.getElementById("compose-max-btn");
+  if (!maxBtn) return;
 
   maxBtn.onclick = () => {
     const modal = document.querySelector(".compose-modal");
     if (!modal) return;
     modal.classList.toggle("compose-maximized");
   };
+}
 
-  closeBtn?.insertAdjacentElement("beforebegin", maxBtn);
+function normalizeComposeHtml(rawHtml) {
+  const trimmed = (rawHtml || "").trim();
+  if (!trimmed || trimmed === "<br>" || trimmed === "<div><br></div>") {
+    return "";
+  }
+  return rawHtml;
+}
+
+function selectionContextNode() {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return null;
+  const node = selection.getRangeAt(0).commonAncestorContainer;
+  return node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+}
+
+function closestInEditor(editor, tagName) {
+  const context = selectionContextNode();
+  if (!(context instanceof Element)) return null;
+  const el = context.closest(tagName);
+  if (!el || !editor.contains(el)) return null;
+  return el;
+}
+
+function unwrapElementToText(element) {
+  const text = document.createTextNode(element.textContent || "");
+  element.replaceWith(text);
+}
+
+function applyFormatToComposer(formatType) {
+  const editor = document.getElementById("compose-body");
+  if (!editor) return;
+
+  editor.focus();
+
+  if (formatType === "bold") {
+    document.execCommand("bold");
+  } else if (formatType === "italic") {
+    document.execCommand("italic");
+  } else if (formatType === "header") {
+    const existingHeader = closestInEditor(editor, "h2");
+    document.execCommand("formatBlock", false, existingHeader ? "p" : "h2");
+  } else if (formatType === "list") {
+    document.execCommand("insertUnorderedList");
+  } else if (formatType === "quote") {
+    const existingQuote = closestInEditor(editor, "blockquote");
+    document.execCommand("formatBlock", false, existingQuote ? "p" : "blockquote");
+  } else if (formatType === "code") {
+    const existingPre = closestInEditor(editor, "pre");
+    if (existingPre) {
+      unwrapElementToText(existingPre);
+    } else {
+      const selected = window.getSelection()?.toString() || "code";
+      document.execCommand("insertHTML", false, `<pre><code>${escapeHtml(selected)}</code></pre>`);
+    }
+  } else if (formatType === "clear") {
+    document.execCommand("removeFormat");
+    const existingHeader = closestInEditor(editor, "h2");
+    if (existingHeader) document.execCommand("formatBlock", false, "p");
+    const existingQuote = closestInEditor(editor, "blockquote");
+    if (existingQuote) document.execCommand("formatBlock", false, "p");
+    const existingList = closestInEditor(editor, "ul");
+    if (existingList) document.execCommand("insertUnorderedList");
+    const existingPre = closestInEditor(editor, "pre");
+    if (existingPre) unwrapElementToText(existingPre);
+  }
+
+  composeSendMode = "html";
+}
+
+function bindComposeFormatting() {
+  const formatToggle = document.getElementById("compose-format-btn");
+  const toolbar = document.getElementById("compose-format-toolbar");
+  if (!formatToggle || !toolbar) return;
+
+  formatToggle.addEventListener("click", () => {
+    toolbar.classList.toggle("open");
+    formatToggle.classList.toggle("active", toolbar.classList.contains("open"));
+    if (toolbar.classList.contains("open")) {
+      composeSendMode = "html";
+    }
+  });
+
+  toolbar.querySelectorAll("[data-format]").forEach((button) => {
+    button.addEventListener("click", () => {
+      applyFormatToComposer(button.getAttribute("data-format") || "bold");
+    });
+  });
+
+  window.addEventListener("verdant-compose-closed", () => {
+    toolbar.classList.remove("open");
+    formatToggle.classList.remove("active");
+    composeSendMode = "plain";
+  });
+}
+
+function composeAttachmentLabel(fileName) {
+  const clean = (fileName || "attachment").trim();
+  return clean.length > 34 ? `${clean.slice(0, 31)}...` : clean;
+}
+
+function renderComposeAttachments() {
+  const wrap = document.getElementById("compose-attachments");
+  if (!wrap) return;
+
+  wrap.innerHTML = "";
+  for (const [idx, attachment] of composeAttachments.entries()) {
+    const chip = document.createElement("div");
+    chip.className = "compose-attachment";
+    chip.innerHTML = `
+      <span class="compose-attachment-name" title="${escapeHtml(attachment.filename)}">${escapeHtml(composeAttachmentLabel(attachment.filename))}</span>
+      <button class="compose-attachment-remove" aria-label="Remove attachment" title="Remove">x</button>
+    `;
+
+    chip.querySelector(".compose-attachment-remove")?.addEventListener("click", () => {
+      composeAttachments = composeAttachments.filter((_, i) => i !== idx);
+      renderComposeAttachments();
+    });
+    wrap.appendChild(chip);
+  }
+}
+
+function arrayBufferToBase64(buffer) {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
+function bindComposeAttachments() {
+  const attachBtn = document.getElementById("compose-attach-btn");
+  const fileInput = document.getElementById("compose-file-input");
+  if (!attachBtn || !fileInput) return;
+
+  attachBtn.addEventListener("click", () => fileInput.click());
+
+  fileInput.addEventListener("change", async () => {
+    const files = Array.from(fileInput.files || []);
+    for (const file of files) {
+      const dataBase64 = arrayBufferToBase64(await file.arrayBuffer());
+      composeAttachments.push({
+        filename: file.name,
+        contentType: file.type || "application/octet-stream",
+        dataBase64,
+      });
+    }
+    fileInput.value = "";
+    renderComposeAttachments();
+  });
+
+  window.addEventListener("verdant-compose-closed", () => {
+    composeAttachments = [];
+    renderComposeAttachments();
+  });
 }
 
 function bindComposeSend() {
@@ -787,10 +941,17 @@ function bindComposeSend() {
   if (!sendBtn) return;
 
   sendBtn.addEventListener("click", async () => {
-    const fields = document.querySelectorAll(".modal-field input");
-    const to = fields[0]?.value?.trim() || "";
-    const subject = fields[2]?.value?.trim() || "";
-    const body = document.querySelector(".modal-body textarea")?.value || "";
+    const toInput = document.getElementById("compose-to");
+    const ccInput = document.getElementById("compose-cc");
+    const subjectInput = document.getElementById("compose-subject");
+    const bodyInput = document.getElementById("compose-body");
+
+    const to = toInput?.value?.trim() || "";
+    const cc = ccInput?.value?.trim() || "";
+    const subject = subjectInput?.value?.trim() || "";
+    const bodyHtmlRaw = bodyInput?.innerHTML || "";
+    const bodyHtml = normalizeComposeHtml(bodyHtmlRaw);
+    const body = bodyInput?.innerText || "";
 
     if (!to) {
       showToast("Recipient is required", "error");
@@ -798,13 +959,25 @@ function bindComposeSend() {
     }
 
     showToast("Sending mail...");
-    await invoke("send_email", { to, subject, body });
+    await invoke("send_email", {
+      to,
+      cc,
+      subject,
+      body,
+      mode: composeSendMode,
+      bodyHtml: composeSendMode === "html" ? bodyHtml : null,
+      attachments: composeAttachments,
+    });
     showToast("Email sent");
 
     if (typeof window.closeCompose === "function") window.closeCompose();
-    fields.forEach((f) => (f.value = ""));
-    const ta = document.querySelector(".modal-body textarea");
-    if (ta) ta.value = "";
+    if (toInput) toInput.value = "";
+    if (ccInput) ccInput.value = "";
+    if (subjectInput) subjectInput.value = "";
+    if (bodyInput) bodyInput.innerHTML = "";
+    composeAttachments = [];
+    composeSendMode = "plain";
+    renderComposeAttachments();
 
     await openMailbox(currentMailbox, false);
   });
@@ -860,9 +1033,11 @@ async function initializeConnectedUI() {
   bindReadingActions();
   bindFilterChips();
   bindSearch();
+  bindComposeWindowControls();
+  bindComposeFormatting();
+  bindComposeAttachments();
   bindComposeSend();
   bindHotkeys();
-  injectComposeMaximizeButton();
   await bindUserProfileAndSettings();
 
   const inboxNow = await invoke("get_emails", { mailbox: "INBOX" });
