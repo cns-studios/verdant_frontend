@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verdant Connected</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;1,9..144,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f5f3ef;
+      --surface: #eeece7;
+      --surface2: #e7e4dd;
+      --white: #fafaf8;
+      --border: #d8d4cb;
+      --text: #1e2119;
+      --text-mid: #4a4d45;
+      --text-muted: #8a8d84;
+      --green: #4a5e45;
+      --green-pale: #e8efe6;
+      --shadow-lg: 0 8px 32px rgba(30,33,25,0.14), 0 2px 8px rgba(30,33,25,0.06);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      font-family: 'DM Sans', sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .shell {
+      width: min(760px, 100%);
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+    }
+
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .logo-mark {
+      width: 28px;
+      height: 28px;
+      background: var(--green);
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .logo-mark svg { width: 14px; height: 14px; }
+
+    .name {
+      font-family: 'Fraunces', serif;
+      font-size: 15px;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: -0.3px;
+    }
+
+    .state {
+      display: inline-flex;
+      align-items: center;
+      background: var(--green-pale);
+      color: var(--green);
+      border: 1px solid #c8d5c4;
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .content {
+      padding: 34px 34px 38px;
+      background: linear-gradient(180deg, var(--white) 0%, #f8f7f3 100%);
+    }
+
+    h1 {
+      font-family: 'Fraunces', serif;
+      font-size: clamp(30px, 4.9vw, 44px);
+      line-height: 1.12;
+      letter-spacing: -0.4px;
+      margin-bottom: 14px;
+    }
+
+    p {
+      color: var(--text-mid);
+      font-size: 14px;
+      line-height: 1.7;
+      max-width: 52ch;
+    }
+
+    .note {
+      margin-top: 22px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .note svg { width: 13px; height: 13px; flex-shrink: 0; }
+
+    @media (max-width: 640px) {
+      .content { padding: 26px 20px 28px; }
+      h1 { font-size: 31px; }
+    }
+  </style>
+</head>
+<body>
+  <section class="shell" aria-live="polite">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+            <polyline points="22,6 12,13 2,6"/>
+          </svg>
+        </div>
+        <div class="name">Verdant</div>
+      </div>
+      <div class="state">Gmail connected</div>
+    </div>
+
+    <div class="content">
+      <h1>Verdant is now connected to your inbox.</h1>
+      <p>
+        Authentication completed successfully. You can return to the Verdant app and begin working with your latest mail.
+      </p>
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        You can close this tab at any time.
+      </div>
+    </div>
+  </section>
+</body>
+</html>

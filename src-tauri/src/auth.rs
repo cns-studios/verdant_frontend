@@ -76,8 +76,7 @@ fn wait_for_auth_code(port: u16, expected_state: String) -> Result<String, Strin
         );
         return Err("OAuth state mismatch".to_string());
     }
-
-    let html = "<html><body><h2>Verdant connected successfully.</h2><p>You can close this window and return to Verdant.</p></body></html>";
+    let html = include_str!("../assets/oauth-success.html");
     let mut response = Response::from_string(html);
     if let Ok(header) = Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..]) {
         response = response.with_header(header);

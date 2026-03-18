@@ -391,6 +391,9 @@ function renderEmailList(animate = false) {
 
   const totalFiltered = visibleEmails().length;
   const emails = pagedEmails();
+  const selectedId = selectedEmail?.id || null;
+  let selectedRow = null;
+  let selectedRowEmail = null;
   setListTitle(currentMailbox, totalFiltered);
 
   for (const email of emails) {
@@ -412,10 +415,19 @@ function renderEmailList(animate = false) {
       selectEmail(email, row).catch(console.error);
     });
 
+    if (selectedId && email.id === selectedId) {
+      row.classList.add("active");
+      selectedRow = row;
+      selectedRowEmail = email;
+    }
+
     list.appendChild(row);
   }
 
-  if (emails.length > 0) {
+  if (selectedRow && selectedRowEmail) {
+    selectedEmail = selectedRowEmail;
+    renderReadingPane(selectedRowEmail);
+  } else if (!selectedEmail && emails.length > 0) {
     const first = list.querySelector(".email-item");
     if (first) selectEmail(emails[0], first).catch(console.error);
   }
@@ -471,6 +483,10 @@ async function notifyNewEmails(nextInbox) {
 }
 
 async function loadLocalMailbox(mailbox, animate = false) {
+  const mailboxChanged = currentMailbox !== mailbox;
+  if (mailboxChanged) {
+    selectedEmail = null;
+  }
   currentMailbox = mailbox;
   currentEmails = await invoke("get_emails", { mailbox });
   currentPage = 1;
