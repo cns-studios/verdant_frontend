@@ -23,6 +23,7 @@ let lastHotkeyAt = new Map();
 let mailboxNextPageToken = new Map();
 let isFetchingMore = false;
 let isDeepSearchActive = false;
+let isReadingPaneHidden = false;
 let composeAttachments = [];
 let composeSendMode = "plain";
 let composeDraftId = null;
@@ -260,6 +261,9 @@ function ensureStyles() {
     .attachment-download-icon.is-success svg { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round; }
     .attachment-download-text { font:500 12px 'DM Sans', sans-serif; color: var(--text); }
     @keyframes verdant-spin { to { transform: rotate(360deg); } }
+    body.reading-pane-hidden .reading-pane { display: none !important; }
+    body.reading-pane-hidden .pane-resizer { display: none !important; }
+    body.reading-pane-hidden .email-list-pane { flex:1 1 auto !important; width:auto !important; min-width:0 !important; max-width:none !important; border-right:0 !important; }
     .icon-btn.active { background: var(--green-pale); color: var(--green); border:1px solid var(--green-muted); }
     .icon-btn.danger:hover { background:#f5dede !important; color:#8a2e2e !important; border:1px solid #d79f9f; }
     .compose-maximized { width:min(1100px, 96vw) !important; height:min(90vh, 920px) !important; }
@@ -359,6 +363,11 @@ function setListTitle(mailbox, count) {
   const countEl = document.querySelector(".list-count");
   if (title) title.textContent = mailboxTitle(mailbox);
   if (countEl) countEl.textContent = `${count} messages`;
+}
+
+function setReadingPaneHidden(hidden) {
+  isReadingPaneHidden = !!hidden;
+  document.body.classList.toggle("reading-pane-hidden", isReadingPaneHidden);
 }
 
 function isImportant(email) {
@@ -627,6 +636,7 @@ async function markSelectedAsReadIfNeeded() {
 }
 
 async function selectEmail(email, row) {
+  setReadingPaneHidden(false);
   selectedEmail = email;
   document.querySelectorAll(".email-item").forEach((el) => el.classList.remove("active"));
   row.classList.add("active");
@@ -802,7 +812,7 @@ function renderEmailList(animate = false) {
   if (selectedRow && selectedRowEmail) {
     selectedEmail = selectedRowEmail;
     renderReadingPane(selectedRowEmail);
-  } else if (!selectedEmail && emails.length > 0) {
+  } else if (!selectedEmail && emails.length > 0 && !isReadingPaneHidden) {
     const first = list.querySelector(".email-item");
     if (first) selectEmail(emails[0], first).catch(console.error);
   }
@@ -1051,6 +1061,13 @@ function bindReadingActions() {
         }
 
         buildActionMenu(menuEntries, button);
+        return;
+      }
+
+      if (title === "Close pane") {
+        selectedEmail = null;
+        document.querySelectorAll(".email-item").forEach((el) => el.classList.remove("active"));
+        setReadingPaneHidden(true);
       }
     };
   }
