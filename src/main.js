@@ -693,6 +693,65 @@ function bindInfiniteScroll() {
   });
 }
 
+function bindPaneResizer() {
+  const pane = document.querySelector(".email-list-pane");
+  const resizer = document.getElementById("pane-resizer");
+  if (!pane || !resizer) return;
+
+  const STORAGE_KEY = "verdant.listPaneWidth";
+  const minWidth = 260;
+  const maxWidth = () => Math.min(window.innerWidth * 0.68, 760);
+
+  const applyWidth = (width) => {
+    const next = Math.max(minWidth, Math.min(Math.round(width), maxWidth()));
+    pane.style.width = `${next}px`;
+    pane.style.minWidth = `${next}px`;
+    pane.style.flex = `0 0 ${next}px`;
+    localStorage.setItem(STORAGE_KEY, String(next));
+  };
+
+  const saved = Number(localStorage.getItem(STORAGE_KEY));
+  if (Number.isFinite(saved) && saved > 0) {
+    applyWidth(saved);
+  }
+
+  const onPointerDown = (event) => {
+    if (window.innerWidth <= 980) return;
+    event.preventDefault();
+    document.body.classList.add("resizing");
+    resizer.setPointerCapture?.(event.pointerId);
+
+    const startX = event.clientX;
+    const startWidth = pane.getBoundingClientRect().width;
+
+    const onMove = (moveEvent) => {
+      moveEvent.preventDefault();
+      const delta = moveEvent.clientX - startX;
+      applyWidth(startWidth + delta);
+    };
+
+    const onUp = () => {
+      document.body.classList.remove("resizing");
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  };
+
+  resizer.addEventListener("pointerdown", onPointerDown);
+
+  window.addEventListener("resize", () => {
+    const current = pane.getBoundingClientRect().width;
+    if (current > maxWidth()) {
+      applyWidth(current);
+    }
+  });
+}
+
 function renderEmailList(animate = false) {
   const list = document.querySelector(".email-list");
   if (!list) return;
@@ -1591,6 +1650,7 @@ async function initializeConnectedUI() {
   bindReadingActions();
   bindFilterChips();
   bindSearch();
+  bindPaneResizer();
   bindInfiniteScroll();
   bindComposeWindowControls();
   bindComposeFormatting();

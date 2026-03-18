@@ -182,11 +182,33 @@
   .email-list-pane {
     width: 320px;
     min-width: 320px;
+    max-width: 68vw;
     background: var(--white);
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  .pane-resizer {
+    width: 8px;
+    cursor: col-resize;
+    background: linear-gradient(to right, transparent 0, transparent 3px, var(--border) 3px, var(--border) 5px, transparent 5px, transparent 8px);
+    flex-shrink: 0;
+    transition: background .12s;
+  }
+
+  .pane-resizer:hover {
+    background: linear-gradient(to right, transparent 0, transparent 3px, var(--green-light) 3px, var(--green-light) 5px, transparent 5px, transparent 8px);
+  }
+
+  body.resizing {
+    cursor: col-resize;
+    user-select: none;
+  }
+
+  @media (max-width: 980px) {
+    .pane-resizer { display: none; }
   }
 
   .list-header {
@@ -901,6 +923,8 @@
     </div>
   </div>
 </div>
+
+<div class="pane-resizer" id="pane-resizer" role="separator" aria-orientation="vertical" aria-label="Resize inbox list"></div>
 
 <div class="reading-pane">
   <div class="reading-header">
