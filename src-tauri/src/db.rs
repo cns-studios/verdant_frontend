@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Email {
     pub id: String,
+    pub draft_id: Option<String>,
     pub thread_id: String,
     pub subject: String,
     pub sender: String,
@@ -30,6 +31,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS emails (
             id TEXT PRIMARY KEY,
+            draft_id TEXT,
             thread_id TEXT NOT NULL,
             subject TEXT NOT NULL,
             sender TEXT NOT NULL,
@@ -55,6 +57,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
     let _ = conn.execute("ALTER TABLE emails ADD COLUMN mailbox TEXT NOT NULL DEFAULT 'INBOX'", []);
     let _ = conn.execute("ALTER TABLE emails ADD COLUMN labels TEXT NOT NULL DEFAULT ''", []);
     let _ = conn.execute("ALTER TABLE emails ADD COLUMN internal_ts INTEGER NOT NULL DEFAULT 0", []);
+    let _ = conn.execute("ALTER TABLE emails ADD COLUMN draft_id TEXT", []);
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS oauth_tokens (

@@ -38,6 +38,11 @@ struct UserProfile {
     initials: String,
 }
 
+#[derive(Serialize)]
+struct DraftSaveResult {
+    draft_id: String,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct EmailAttachment {
@@ -72,6 +77,121 @@ fn markdown_to_html(markdown: &str) -> String {
     let mut html_out = String::new();
     html::push_html(&mut html_out, parser);
     html_out
+}
+
+fn build_raw_mime_message(
+    to: String,
+    cc: String,
+    subject: String,
+    body: String,
+    mode: String,
+    body_html: Option<String>,
+    attachments: Vec<EmailAttachment>,
+) -> Result<String, String> {
+    let to = sanitize_header_value(&to);
+    let cc = sanitize_header_value(&cc);
+    let subject = sanitize_header_value(&subject);
+    let is_markdown = mode.eq_ignore_ascii_case("markdown");
+    let is_html = mode.eq_ignore_ascii_case("html");
+    let html_body = if is_html {
+        let provided = body_html.unwrap_or_default();
+        if provided.trim().is_empty() {
+            markdown_to_html(&body)
+        } else {
+            provided
+        }
+    } else {
+        markdown_to_html(&body)
+    };
+
+    let mut raw_message = String::new();
+    if !to.is_empty() {
+        raw_message.push_str(&format!("To: {}\r\n", to));
+    }
+    if !cc.is_empty() {
+        raw_message.push_str(&format!("Cc: {}\r\n", cc));
+    }
+    raw_message.push_str(&format!("Subject: {}\r\n", subject));
+    raw_message.push_str("MIME-Version: 1.0\r\n");
+
+    if attachments.is_empty() && !is_markdown && !is_html {
+        raw_message.push_str("Content-Type: text/plain; charset=UTF-8\r\n\r\n");
+        raw_message.push_str(&body);
+    } else {
+        let mixed_boundary = "verdant-mixed-001";
+        let alt_boundary = "verdant-alt-001";
+
+        if attachments.is_empty() {
+            raw_message.push_str(&format!(
+                "Content-Type: multipart/alternative; boundary=\"{}\"\r\n\r\n",
+                alt_boundary
+            ));
+            raw_message.push_str(&format!("--{}\r\n", alt_boundary));
+            raw_message.push_str("Content-Type: text/plain; charset=UTF-8\r\n\r\n");
+            raw_message.push_str(&body);
+            raw_message.push_str("\r\n");
+            raw_message.push_str(&format!("--{}\r\n", alt_boundary));
+            raw_message.push_str("Content-Type: text/html; charset=UTF-8\r\n\r\n");
+            raw_message.push_str(&html_body);
+            raw_message.push_str("\r\n");
+            raw_message.push_str(&format!("--{}--\r\n", alt_boundary));
+        } else {
+            raw_message.push_str(&format!(
+                "Content-Type: multipart/mixed; boundary=\"{}\"\r\n\r\n",
+                mixed_boundary
+            ));
+
+            raw_message.push_str(&format!("--{}\r\n", mixed_boundary));
+            if is_markdown || is_html {
+                raw_message.push_str(&format!(
+                    "Content-Type: multipart/alternative; boundary=\"{}\"\r\n\r\n",
+                    alt_boundary
+                ));
+                raw_message.push_str(&format!("--{}\r\n", alt_boundary));
+                raw_message.push_str("Content-Type: text/plain; charset=UTF-8\r\n\r\n");
+                raw_message.push_str(&body);
+                raw_message.push_str("\r\n");
+                raw_message.push_str(&format!("--{}\r\n", alt_boundary));
+                raw_message.push_str("Content-Type: text/html; charset=UTF-8\r\n\r\n");
+                raw_message.push_str(&html_body);
+                raw_message.push_str("\r\n");
+                raw_message.push_str(&format!("--{}--\r\n", alt_boundary));
+            } else {
+                raw_message.push_str("Content-Type: text/plain; charset=UTF-8\r\n\r\n");
+                raw_message.push_str(&body);
+                raw_message.push_str("\r\n");
+            }
+
+            for attachment in attachments {
+                let raw_bytes = STANDARD
+                    .decode(attachment.data_base64.as_bytes())
+                    .map_err(|_| format!("Invalid attachment encoding for {}", attachment.filename))?;
+                let attachment_encoded = STANDARD.encode(raw_bytes);
+                let content_type = if attachment.content_type.trim().is_empty() {
+                    "application/octet-stream".to_string()
+                } else {
+                    attachment.content_type
+                };
+                let safe_filename = sanitize_header_value(&attachment.filename);
+
+                raw_message.push_str(&format!("--{}\r\n", mixed_boundary));
+                raw_message.push_str(&format!(
+                    "Content-Type: {}; name=\"{}\"\r\n",
+                    content_type, safe_filename
+                ));
+                raw_message.push_str("Content-Transfer-Encoding: base64\r\n");
+                raw_message.push_str(&format!(
+                    "Content-Disposition: attachment; filename=\"{}\"\r\n\r\n",
+                    safe_filename
+                ));
+                raw_message.push_str(&fold_base64_for_mime(&attachment_encoded));
+            }
+
+            raw_message.push_str(&format!("--{}--\r\n", mixed_boundary));
+        }
+    }
+
+    Ok(URL_SAFE_NO_PAD.encode(raw_message.as_bytes()))
 }
 
 fn now_epoch() -> i64 {
@@ -233,10 +353,14 @@ async fn sync_mailbox_internal(state: &DbState, mailbox: &str) -> Result<(), Str
     let client = reqwest::Client::new();
     let token = ensure_token(state).await?.access_token;
 
-    let list_url = format!(
-        "https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds={}&maxResults=50",
-        label
-    );
+    let list_url = if mailbox == "DRAFT" {
+        "https://gmail.googleapis.com/gmail/v1/users/me/drafts?maxResults=50".to_string()
+    } else {
+        format!(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds={}&maxResults=50",
+            label
+        )
+    };
     let res = client
         .get(list_url)
         .bearer_auth(&token)
@@ -251,27 +375,60 @@ async fn sync_mailbox_internal(state: &DbState, mailbox: &str) -> Result<(), Str
     }
 
     let json = res.json::<Value>().await.map_err(|e| e.to_string())?;
-    let messages = json
-        .get("messages")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    let message_refs: Vec<(String, Option<String>)> = if mailbox == "DRAFT" {
+        json.get("drafts")
+            .and_then(Value::as_array)
+            .map(|drafts| {
+                drafts
+                    .iter()
+                    .filter_map(|draft| {
+                        let draft_id = draft.get("id").and_then(Value::as_str)?.to_string();
+                        let message_id = draft
+                            .get("message")
+                            .and_then(|m| m.get("id"))
+                            .and_then(Value::as_str)?
+                            .to_string();
+                        Some((message_id, Some(draft_id)))
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    } else {
+        json.get("messages")
+            .and_then(Value::as_array)
+            .map(|messages| {
+                messages
+                    .iter()
+                    .filter_map(|msg| {
+                        msg.get("id")
+                            .and_then(Value::as_str)
+                            .map(|id| (id.to_string(), None))
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    };
 
-    for msg in messages {
-        let Some(id) = msg.get("id").and_then(Value::as_str) else {
+    for (id, draft_id) in message_refs {
+        if id.is_empty() {
             continue;
-        };
+        }
 
         // Fast path for existing emails: keep metadata fresh but skip full-body fetch.
         let exists = {
             let conn = state.conn.lock().await;
             let count: i64 = conn
-                .query_row("SELECT COUNT(*) FROM emails WHERE id = ?1", [id], |r| r.get(0))
+                .query_row("SELECT COUNT(*) FROM emails WHERE id = ?1", [id.as_str()], |r| r.get(0))
                 .unwrap_or(0);
             count > 0
         };
 
-        let detail_url = if exists {
+        let detail_url = if mailbox == "DRAFT" {
+            format!(
+                "https://gmail.googleapis.com/gmail/v1/users/me/drafts/{}?format=full",
+                draft_id.clone().unwrap_or_default()
+            )
+        } else if exists {
             format!(
                 "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date",
                 id
@@ -293,7 +450,26 @@ async fn sync_mailbox_internal(state: &DbState, mailbox: &str) -> Result<(), Str
             continue;
         }
 
-        let detail_json = detail.json::<Value>().await.map_err(|e| e.to_string())?;
+        let raw_detail = detail.json::<Value>().await.map_err(|e| e.to_string())?;
+        let detail_json = if mailbox == "DRAFT" {
+            raw_detail
+                .get("message")
+                .cloned()
+                .unwrap_or_else(|| json!({}))
+        } else {
+            raw_detail.clone()
+        };
+
+        let resolved_draft_id = if mailbox == "DRAFT" {
+            draft_id.clone().or_else(|| {
+                raw_detail
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+        } else {
+            None
+        };
 
         let thread_id = detail_json
             .get("threadId")
@@ -332,7 +508,7 @@ async fn sync_mailbox_internal(state: &DbState, mailbox: &str) -> Result<(), Str
 
         let body_html = if exists {
             let conn = state.conn.lock().await;
-            conn.query_row("SELECT body_html FROM emails WHERE id = ?1", [id], |r| r.get::<_, String>(0))
+            conn.query_row("SELECT body_html FROM emails WHERE id = ?1", [id.as_str()], |r| r.get::<_, String>(0))
                 .unwrap_or_else(|_| format!("<pre>{}</pre>", snippet))
         } else {
             detail_json
@@ -356,10 +532,11 @@ async fn sync_mailbox_internal(state: &DbState, mailbox: &str) -> Result<(), Str
 
         let conn = state.conn.lock().await;
         conn.execute(
-            "INSERT INTO emails (id, thread_id, subject, sender, to_recipients, cc_recipients, snippet, body_html, date, is_read, mailbox, labels, internal_ts)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                "INSERT INTO emails (id, draft_id, thread_id, subject, sender, to_recipients, cc_recipients, snippet, body_html, date, is_read, mailbox, labels, internal_ts)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
              ON CONFLICT(id)
              DO UPDATE SET
+                     draft_id = excluded.draft_id,
                 thread_id = excluded.thread_id,
                 subject = excluded.subject,
                 sender = excluded.sender,
@@ -373,6 +550,7 @@ async fn sync_mailbox_internal(state: &DbState, mailbox: &str) -> Result<(), Str
                 internal_ts = excluded.internal_ts",
             (
                 id,
+                resolved_draft_id,
                 &thread_id,
                 &subject,
                 &sender,
@@ -419,10 +597,10 @@ async fn get_emails(
     let conn = state.conn.lock().await;
 
     let sql = if box_name == "STARRED" {
-        "SELECT id, thread_id, subject, sender, to_recipients, cc_recipients, snippet, body_html, date, is_read, starred, mailbox, labels, internal_ts
+        "SELECT id, draft_id, thread_id, subject, sender, to_recipients, cc_recipients, snippet, body_html, date, is_read, starred, mailbox, labels, internal_ts
          FROM emails WHERE starred = 1 ORDER BY internal_ts DESC, rowid DESC LIMIT 500"
     } else {
-        "SELECT id, thread_id, subject, sender, to_recipients, cc_recipients, snippet, body_html, date, is_read, starred, mailbox, labels, internal_ts
+        "SELECT id, draft_id, thread_id, subject, sender, to_recipients, cc_recipients, snippet, body_html, date, is_read, starred, mailbox, labels, internal_ts
          FROM emails WHERE mailbox = ?1 ORDER BY internal_ts DESC, rowid DESC LIMIT 500"
     };
 
@@ -431,19 +609,20 @@ async fn get_emails(
     let mapper = |row: &rusqlite::Row<'_>| {
         Ok(Email {
             id: row.get(0)?,
-            thread_id: row.get(1)?,
-            subject: row.get(2)?,
-            sender: row.get(3)?,
-            to_recipients: row.get(4)?,
-            cc_recipients: row.get(5)?,
-            snippet: row.get(6)?,
-            body_html: row.get(7)?,
-            date: row.get(8)?,
-            is_read: row.get::<_, i32>(9)? != 0,
-            starred: row.get::<_, i32>(10)? != 0,
-            mailbox: row.get(11)?,
-            labels: row.get(12)?,
-            internal_ts: row.get(13)?,
+            draft_id: row.get(1)?,
+            thread_id: row.get(2)?,
+            subject: row.get(3)?,
+            sender: row.get(4)?,
+            to_recipients: row.get(5)?,
+            cc_recipients: row.get(6)?,
+            snippet: row.get(7)?,
+            body_html: row.get(8)?,
+            date: row.get(9)?,
+            is_read: row.get::<_, i32>(10)? != 0,
+            starred: row.get::<_, i32>(11)? != 0,
+            mailbox: row.get(12)?,
+            labels: row.get(13)?,
+            internal_ts: row.get(14)?,
         })
     };
 
@@ -636,109 +815,7 @@ async fn send_email(
     attachments: Vec<EmailAttachment>,
 ) -> Result<(), String> {
     let token = ensure_token(&state).await?.access_token;
-
-    let to = sanitize_header_value(&to);
-    let cc = sanitize_header_value(&cc);
-    let subject = sanitize_header_value(&subject);
-    let is_markdown = mode.eq_ignore_ascii_case("markdown");
-    let is_html = mode.eq_ignore_ascii_case("html");
-    let html_body = if is_html {
-        let provided = body_html.unwrap_or_default();
-        if provided.trim().is_empty() {
-            markdown_to_html(&body)
-        } else {
-            provided
-        }
-    } else {
-        markdown_to_html(&body)
-    };
-
-    let mut raw_message = String::new();
-    raw_message.push_str(&format!("To: {}\r\n", to));
-    if !cc.is_empty() {
-        raw_message.push_str(&format!("Cc: {}\r\n", cc));
-    }
-    raw_message.push_str(&format!("Subject: {}\r\n", subject));
-    raw_message.push_str("MIME-Version: 1.0\r\n");
-
-    if attachments.is_empty() && !is_markdown && !is_html {
-        raw_message.push_str("Content-Type: text/plain; charset=UTF-8\r\n\r\n");
-        raw_message.push_str(&body);
-    } else {
-        let mixed_boundary = "verdant-mixed-001";
-        let alt_boundary = "verdant-alt-001";
-
-        if attachments.is_empty() {
-            raw_message.push_str(&format!(
-                "Content-Type: multipart/alternative; boundary=\"{}\"\r\n\r\n",
-                alt_boundary
-            ));
-            raw_message.push_str(&format!("--{}\r\n", alt_boundary));
-            raw_message.push_str("Content-Type: text/plain; charset=UTF-8\r\n\r\n");
-            raw_message.push_str(&body);
-            raw_message.push_str("\r\n");
-            raw_message.push_str(&format!("--{}\r\n", alt_boundary));
-            raw_message.push_str("Content-Type: text/html; charset=UTF-8\r\n\r\n");
-            raw_message.push_str(&html_body);
-            raw_message.push_str("\r\n");
-            raw_message.push_str(&format!("--{}--\r\n", alt_boundary));
-        } else {
-            raw_message.push_str(&format!(
-                "Content-Type: multipart/mixed; boundary=\"{}\"\r\n\r\n",
-                mixed_boundary
-            ));
-
-            raw_message.push_str(&format!("--{}\r\n", mixed_boundary));
-            if is_markdown || is_html {
-                raw_message.push_str(&format!(
-                    "Content-Type: multipart/alternative; boundary=\"{}\"\r\n\r\n",
-                    alt_boundary
-                ));
-                raw_message.push_str(&format!("--{}\r\n", alt_boundary));
-                raw_message.push_str("Content-Type: text/plain; charset=UTF-8\r\n\r\n");
-                raw_message.push_str(&body);
-                raw_message.push_str("\r\n");
-                raw_message.push_str(&format!("--{}\r\n", alt_boundary));
-                raw_message.push_str("Content-Type: text/html; charset=UTF-8\r\n\r\n");
-                raw_message.push_str(&html_body);
-                raw_message.push_str("\r\n");
-                raw_message.push_str(&format!("--{}--\r\n", alt_boundary));
-            } else {
-                raw_message.push_str("Content-Type: text/plain; charset=UTF-8\r\n\r\n");
-                raw_message.push_str(&body);
-                raw_message.push_str("\r\n");
-            }
-
-            for attachment in attachments {
-                let raw_bytes = STANDARD
-                    .decode(attachment.data_base64.as_bytes())
-                    .map_err(|_| format!("Invalid attachment encoding for {}", attachment.filename))?;
-                let attachment_encoded = STANDARD.encode(raw_bytes);
-                let content_type = if attachment.content_type.trim().is_empty() {
-                    "application/octet-stream".to_string()
-                } else {
-                    attachment.content_type
-                };
-                let safe_filename = sanitize_header_value(&attachment.filename);
-
-                raw_message.push_str(&format!("--{}\r\n", mixed_boundary));
-                raw_message.push_str(&format!(
-                    "Content-Type: {}; name=\"{}\"\r\n",
-                    content_type, safe_filename
-                ));
-                raw_message.push_str("Content-Transfer-Encoding: base64\r\n");
-                raw_message.push_str(&format!(
-                    "Content-Disposition: attachment; filename=\"{}\"\r\n\r\n",
-                    safe_filename
-                ));
-                raw_message.push_str(&fold_base64_for_mime(&attachment_encoded));
-            }
-
-            raw_message.push_str(&format!("--{}--\r\n", mixed_boundary));
-        }
-    }
-
-    let encoded = URL_SAFE_NO_PAD.encode(raw_message.as_bytes());
+    let encoded = build_raw_mime_message(to, cc, subject, body, mode, body_html, attachments)?;
 
     let client = reqwest::Client::new();
     let res = client
@@ -754,6 +831,113 @@ async fn send_email(
     } else {
         Err(format!("Error: {}", res.status()))
     }
+}
+
+#[tauri::command]
+async fn save_draft(
+    state: State<'_, DbState>,
+    to: String,
+    cc: String,
+    subject: String,
+    body: String,
+    mode: String,
+    body_html: Option<String>,
+    attachments: Vec<EmailAttachment>,
+    draft_id: Option<String>,
+) -> Result<DraftSaveResult, String> {
+    let token = ensure_token(&state).await?.access_token;
+    let encoded = build_raw_mime_message(to, cc, subject, body, mode, body_html, attachments)?;
+
+    let client = reqwest::Client::new();
+    let payload = json!({
+        "message": { "raw": encoded }
+    });
+
+    let res = if let Some(existing_id) = draft_id.clone().filter(|d| !d.trim().is_empty()) {
+        client
+            .put(format!("https://gmail.googleapis.com/gmail/v1/users/me/drafts/{}", existing_id))
+            .bearer_auth(&token)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?
+    } else {
+        client
+            .post("https://gmail.googleapis.com/gmail/v1/users/me/drafts")
+            .bearer_auth(&token)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?
+    };
+
+    if !res.status().is_success() {
+        let status = res.status();
+        let body = res.text().await.unwrap_or_default();
+        return Err(format!("Draft save failed: {} {}", status, body));
+    }
+
+    let data = res.json::<Value>().await.map_err(|e| e.to_string())?;
+    let saved_draft_id = data
+        .get("id")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| "Draft save returned no draft id".to_string())?;
+
+    sync_mailbox_internal(&state, "DRAFT").await?;
+
+    Ok(DraftSaveResult {
+        draft_id: saved_draft_id,
+    })
+}
+
+#[tauri::command]
+async fn send_existing_draft(state: State<'_, DbState>, draft_id: String) -> Result<(), String> {
+    let token = ensure_token(&state).await?.access_token;
+    let client = reqwest::Client::new();
+    let draft_id_clean = draft_id.trim().to_string();
+
+    let res = client
+        .post("https://gmail.googleapis.com/gmail/v1/users/me/drafts/send")
+        .bearer_auth(&token)
+        .json(&json!({ "id": draft_id_clean }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !res.status().is_success() {
+        let status = res.status();
+        let body = res.text().await.unwrap_or_default();
+        return Err(format!("Draft send failed: {} {}", status, body));
+    }
+
+    // Gmail returns the sent message; use it to aggressively clear local draft state.
+    let sent_msg = res.json::<Value>().await.ok();
+    let sent_message_id = sent_msg
+        .as_ref()
+        .and_then(|v| v.get("id"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+
+    {
+        let conn = state.conn.lock().await;
+        if let Some(message_id) = sent_message_id {
+            let _ = conn.execute(
+                "DELETE FROM emails WHERE mailbox = 'DRAFT' AND (draft_id = ?1 OR id = ?2)",
+                (&draft_id_clean, &message_id),
+            );
+        } else {
+            let _ = conn.execute(
+                "DELETE FROM emails WHERE mailbox = 'DRAFT' AND draft_id = ?1",
+                [&draft_id_clean],
+            );
+        }
+    }
+
+    let _ = sync_mailbox_internal(&state, "DRAFT").await;
+    let _ = sync_mailbox_internal(&state, "SENT").await;
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -813,6 +997,8 @@ pub fn run() {
             logout,
             clear_local_data,
             send_email,
+            save_draft,
+            send_existing_draft,
             auth_status
         ])
         .run(tauri::generate_context!())

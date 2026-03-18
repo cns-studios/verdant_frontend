@@ -22,6 +22,7 @@ let lastSynced = new Map();
 let lastHotkeyAt = new Map();
 let composeAttachments = [];
 let composeSendMode = "plain";
+let composeDraftId = null;
 
 const defaultHotkeys = {
   enabled: true,
@@ -673,14 +674,31 @@ function bindReadingActions() {
       }
 
       if (title === "More") {
-        buildActionMenu(
-          [
-            { label: "Mark as Read", onClick: () => invoke("set_email_read_status", { emailId: selectedEmail.id, isRead: true }) },
-            { label: "Mark as Unread", onClick: () => invoke("set_email_read_status", { emailId: selectedEmail.id, isRead: false }) },
-            { label: "Toggle Star", onClick: () => invoke("toggle_starred", { emailId: selectedEmail.id }) },
-          ],
-          button
-        );
+        const menuEntries = [
+          { label: "Mark as Read", onClick: () => invoke("set_email_read_status", { emailId: selectedEmail.id, isRead: true }) },
+          { label: "Mark as Unread", onClick: () => invoke("set_email_read_status", { emailId: selectedEmail.id, isRead: false }) },
+          { label: "Toggle Star", onClick: () => invoke("toggle_starred", { emailId: selectedEmail.id }) },
+        ];
+
+        if (selectedEmail.mailbox === "DRAFT") {
+          menuEntries.unshift(
+            { label: "Edit Draft", onClick: async () => openComposeForDraft(selectedEmail) },
+            {
+              label: "Send Draft",
+              onClick: async () => {
+                const draftId = selectedEmail.draft_id;
+                if (!draftId) {
+                  showToast("No draft id found for this message", "error");
+                  return;
+                }
+                await invoke("send_existing_draft", { draftId });
+                showToast("Draft sent");
+              },
+            }
+          );
+        }
+
+        buildActionMenu(menuEntries, button);
       }
     };
   }
@@ -899,6 +917,64 @@ function normalizeComposeHtml(rawHtml) {
   return rawHtml;
 }
 
+function collectComposePayload() {
+  const toInput = document.getElementById("compose-to");
+  const ccInput = document.getElementById("compose-cc");
+  const subjectInput = document.getElementById("compose-subject");
+  const bodyInput = document.getElementById("compose-body");
+
+  const bodyHtmlRaw = bodyInput?.innerHTML || "";
+  const bodyHtml = normalizeComposeHtml(bodyHtmlRaw);
+  const body = bodyInput?.innerText || "";
+
+  return {
+    toInput,
+    ccInput,
+    subjectInput,
+    bodyInput,
+    to: toInput?.value?.trim() || "",
+    cc: ccInput?.value?.trim() || "",
+    subject: subjectInput?.value?.trim() || "",
+    body,
+    bodyHtml,
+  };
+}
+
+function resetComposeState() {
+  const toInput = document.getElementById("compose-to");
+  const ccInput = document.getElementById("compose-cc");
+  const subjectInput = document.getElementById("compose-subject");
+  const bodyInput = document.getElementById("compose-body");
+
+  if (toInput) toInput.value = "";
+  if (ccInput) ccInput.value = "";
+  if (subjectInput) subjectInput.value = "";
+  if (bodyInput) bodyInput.innerHTML = "";
+
+  composeAttachments = [];
+  composeSendMode = "plain";
+  composeDraftId = null;
+  renderComposeAttachments();
+}
+
+function openComposeForDraft(email) {
+  if (!email) return;
+  if (typeof window.openCompose === "function") window.openCompose();
+
+  const toInput = document.getElementById("compose-to");
+  const ccInput = document.getElementById("compose-cc");
+  const subjectInput = document.getElementById("compose-subject");
+  const bodyInput = document.getElementById("compose-body");
+
+  if (toInput) toInput.value = email.to_recipients || "";
+  if (ccInput) ccInput.value = email.cc_recipients || "";
+  if (subjectInput) subjectInput.value = email.subject || "";
+  if (bodyInput) bodyInput.innerHTML = email.body_html || "";
+
+  composeSendMode = "html";
+  composeDraftId = email.draft_id || null;
+}
+
 function selectionContextNode() {
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0) return null;
@@ -1044,9 +1120,14 @@ function bindComposeAttachments() {
     renderComposeAttachments();
   });
 
+  window.addEventListener("verdant-compose-opened", () => {
+    if (!composeDraftId) {
+      resetComposeState();
+    }
+  });
+
   window.addEventListener("verdant-compose-closed", () => {
-    composeAttachments = [];
-    renderComposeAttachments();
+    resetComposeState();
   });
 }
 
@@ -1055,44 +1136,66 @@ function bindComposeSend() {
   if (!sendBtn) return;
 
   sendBtn.addEventListener("click", async () => {
-    const toInput = document.getElementById("compose-to");
-    const ccInput = document.getElementById("compose-cc");
-    const subjectInput = document.getElementById("compose-subject");
-    const bodyInput = document.getElementById("compose-body");
+    const payload = collectComposePayload();
 
-    const to = toInput?.value?.trim() || "";
-    const cc = ccInput?.value?.trim() || "";
-    const subject = subjectInput?.value?.trim() || "";
-    const bodyHtmlRaw = bodyInput?.innerHTML || "";
-    const bodyHtml = normalizeComposeHtml(bodyHtmlRaw);
-    const body = bodyInput?.innerText || "";
-
-    if (!to) {
+    if (!payload.to) {
       showToast("Recipient is required", "error");
       return;
     }
 
     showToast("Sending mail...");
-    await invoke("send_email", {
-      to,
-      cc,
-      subject,
-      body,
-      mode: composeSendMode,
-      bodyHtml: composeSendMode === "html" ? bodyHtml : null,
-      attachments: composeAttachments,
-    });
+    if (composeDraftId) {
+      const saved = await invoke("save_draft", {
+        to: payload.to,
+        cc: payload.cc,
+        subject: payload.subject,
+        body: payload.body,
+        mode: composeSendMode,
+        bodyHtml: composeSendMode === "html" ? payload.bodyHtml : null,
+        attachments: composeAttachments,
+        draftId: composeDraftId,
+      });
+      await invoke("send_existing_draft", { draftId: saved.draft_id || composeDraftId });
+    } else {
+      await invoke("send_email", {
+        to: payload.to,
+        cc: payload.cc,
+        subject: payload.subject,
+        body: payload.body,
+        mode: composeSendMode,
+        bodyHtml: composeSendMode === "html" ? payload.bodyHtml : null,
+        attachments: composeAttachments,
+      });
+    }
     showToast("Email sent");
 
     if (typeof window.closeCompose === "function") window.closeCompose();
-    if (toInput) toInput.value = "";
-    if (ccInput) ccInput.value = "";
-    if (subjectInput) subjectInput.value = "";
-    if (bodyInput) bodyInput.innerHTML = "";
-    composeAttachments = [];
-    composeSendMode = "plain";
-    renderComposeAttachments();
 
+    await openMailbox(currentMailbox, false);
+  });
+}
+
+function bindComposeDraftSave() {
+  const draftBtn = document.getElementById("compose-save-draft-btn");
+  if (!draftBtn) return;
+
+  draftBtn.addEventListener("click", async () => {
+    const payload = collectComposePayload();
+    showToast("Saving draft...");
+
+    const result = await invoke("save_draft", {
+      to: payload.to,
+      cc: payload.cc,
+      subject: payload.subject,
+      body: payload.body,
+      mode: composeSendMode,
+      bodyHtml: composeSendMode === "html" ? payload.bodyHtml : null,
+      attachments: composeAttachments,
+      draftId: composeDraftId,
+    });
+
+    composeDraftId = result.draft_id || composeDraftId;
+    showToast("Draft saved");
     await openMailbox(currentMailbox, false);
   });
 }
@@ -1155,6 +1258,7 @@ async function initializeConnectedUI() {
   bindComposeFormatting();
   bindComposeAttachments();
   bindComposeSend();
+  bindComposeDraftSave();
   bindHotkeys();
   await bindUserProfileAndSettings();
 

@@ -1,4 +1,1 @@
-- Settings page with Tabs, one for Keybinds
 - Real Usericons for sender mails if available
-- Editing/Seding drafts
-- Drafting as a sending option
