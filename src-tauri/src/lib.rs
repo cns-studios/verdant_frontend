@@ -345,36 +345,45 @@ fn mailbox_label(mailbox: &str) -> Option<&'static str> {
     }
 }
 
-fn infer_mailbox_from_labels(labels: &str, fallback: &str) -> String {
+fn mailbox_from_labels(labels: &str) -> String {
     let parts: Vec<&str> = labels.split(',').collect();
-    if parts.iter().any(|l| *l == "SENT") {
-        return "SENT".to_string();
+    if parts.contains(&"SENT") {
+        "SENT".to_string()
+    } else if parts.contains(&"DRAFT") {
+        "DRAFT".to_string()
+    } else if parts.contains(&"INBOX") {
+        "INBOX".to_string()
+    } else {
+        "ARCHIVE".to_string()
     }
-    if parts.iter().any(|l| *l == "DRAFT") {
-        return "DRAFT".to_string();
-    }
-    if parts.iter().any(|l| *l == "INBOX") {
-        return "INBOX".to_string();
-    }
-    fallback.to_string()
 }
 
-async fn sync_mailbox_internal(state: &DbState, mailbox: &str, max_results: usize) -> Result<(), String> {
+async fn sync_mailbox_page_internal(
+    state: &DbState,
+    mailbox: &str,
+    page_token: Option<String>,
+) -> Result<Option<String>, String> {
     let Some(label) = mailbox_label(mailbox) else {
-        return Ok(());
+        return Ok(None);
     };
 
     let client = reqwest::Client::new();
     let token = ensure_token(state).await?.access_token;
 
-    let list_url = if mailbox == "DRAFT" {
-        format!("https://gmail.googleapis.com/gmail/v1/users/me/drafts?maxResults={}", max_results)
+    let mut list_url = if mailbox == "DRAFT" {
+        "https://gmail.googleapis.com/gmail/v1/users/me/drafts?maxResults=50".to_string()
     } else {
         format!(
-            "https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds={}&maxResults={}",
-            label, max_results
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds={}&maxResults=50",
+            label
         )
     };
+    if let Some(token) = page_token {
+        if !token.trim().is_empty() {
+            list_url.push_str("&pageToken=");
+            list_url.push_str(token.trim());
+        }
+    }
     let res = client
         .get(list_url)
         .bearer_auth(&token)
@@ -389,6 +398,11 @@ async fn sync_mailbox_internal(state: &DbState, mailbox: &str, max_results: usiz
     }
 
     let json = res.json::<Value>().await.map_err(|e| e.to_string())?;
+    let next_page_token = json
+        .get("nextPageToken")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+
     let message_refs: Vec<(String, Option<String>)> = if mailbox == "DRAFT" {
         json.get("drafts")
             .and_then(Value::as_array)
@@ -574,7 +588,7 @@ async fn sync_mailbox_internal(state: &DbState, mailbox: &str, max_results: usiz
                 &body_html,
                 &date,
                 is_read as i32,
-                infer_mailbox_from_labels(&labels, mailbox),
+                mailbox,
                 &labels,
                 internal_ts,
             ),
@@ -582,6 +596,11 @@ async fn sync_mailbox_internal(state: &DbState, mailbox: &str, max_results: usiz
         .map_err(|e| e.to_string())?;
     }
 
+    Ok(next_page_token)
+}
+
+async fn sync_mailbox_internal(state: &DbState, mailbox: &str) -> Result<(), String> {
+    let _ = sync_mailbox_page_internal(state, mailbox, None).await?;
     Ok(())
 }
 
@@ -600,6 +619,15 @@ async fn sync_emails(state: State<'_, DbState>) -> Result<(), String> {
 #[tauri::command]
 async fn sync_mailbox(state: State<'_, DbState>, mailbox: String) -> Result<(), String> {
     sync_mailbox_internal(&state, mailbox.as_str()).await
+}
+
+#[tauri::command]
+async fn sync_mailbox_page(
+    state: State<'_, DbState>,
+    mailbox: String,
+    page_token: Option<String>,
+) -> Result<Option<String>, String> {
+    sync_mailbox_page_internal(&state, mailbox.as_str(), page_token).await
 }
 
 #[tauri::command]
@@ -653,6 +681,125 @@ async fn get_emails(
     };
 
     Ok(emails)
+}
+
+#[tauri::command]
+async fn deep_search_emails(
+    state: State<'_, DbState>,
+    query: String,
+) -> Result<Vec<Email>, String> {
+    let token = ensure_token(&state).await?.access_token;
+    let client = reqwest::Client::new();
+    let q = format!("in:anywhere {}", query.trim());
+
+    let list = client
+        .get("https://gmail.googleapis.com/gmail/v1/users/me/messages")
+        .query(&[("maxResults", "100"), ("q", q.as_str())])
+        .bearer_auth(&token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !list.status().is_success() {
+        let status = list.status();
+        let body = list.text().await.unwrap_or_default();
+        return Err(format!("Deep search failed: {} {}", status, body));
+    }
+
+    let json = list.json::<Value>().await.map_err(|e| e.to_string())?;
+    let refs = json
+        .get("messages")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    let mut results = Vec::new();
+    for msg in refs {
+        let Some(id) = msg.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+
+        let detail = client
+            .get(format!(
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=full",
+                id
+            ))
+            .bearer_auth(&token)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if !detail.status().is_success() {
+            continue;
+        }
+
+        let detail_json = detail.json::<Value>().await.map_err(|e| e.to_string())?;
+        let headers = detail_json
+            .get("payload")
+            .and_then(|p| p.get("headers"))
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+
+        let snippet = strip_confusable_chars(
+            detail_json
+                .get("snippet")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        );
+        let subject = strip_confusable_chars(
+            &header_value(&headers, "Subject").unwrap_or_else(|| "(No Subject)".to_string()),
+        );
+        let sender = strip_confusable_chars(
+            &header_value(&headers, "From").unwrap_or_else(|| "Unknown Sender".to_string()),
+        );
+        let to_recipients = strip_confusable_chars(&header_value(&headers, "To").unwrap_or_default());
+        let cc_recipients = strip_confusable_chars(&header_value(&headers, "Cc").unwrap_or_default());
+        let date = header_value(&headers, "Date").unwrap_or_else(|| "Unknown Date".to_string());
+        let labels = detail_json
+            .get("labelIds")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
+            .unwrap_or_default();
+        let internal_ts = detail_json
+            .get("internalDate")
+            .and_then(Value::as_str)
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or(0);
+        let body_html = detail_json
+            .get("payload")
+            .and_then(extract_body)
+            .unwrap_or_else(|| format!("<pre>{}</pre>", snippet));
+
+        results.push(Email {
+            id: id.to_string(),
+            draft_id: None,
+            thread_id: detail_json
+                .get("threadId")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            subject,
+            sender,
+            to_recipients,
+            cc_recipients,
+            snippet,
+            body_html,
+            date,
+            is_read: !labels.split(',').any(|l| l == "UNREAD"),
+            starred: labels.split(',').any(|l| l == "STARRED"),
+            mailbox: mailbox_from_labels(&labels),
+            labels,
+            internal_ts,
+        });
+    }
+
+    Ok(results)
 }
 
 #[tauri::command]
@@ -1001,7 +1148,9 @@ pub fn run() {
             connect_gmail,
             sync_emails,
             sync_mailbox,
+            sync_mailbox_page,
             get_emails,
+            deep_search_emails,
             set_email_read_status,
             toggle_starred,
             archive_email,

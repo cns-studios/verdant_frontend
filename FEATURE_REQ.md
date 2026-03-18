@@ -1,0 +1,1 @@
+- A global search, (CTRL + K) that does quick serching across mailboxes, deep search on-demand, shows setting results and more

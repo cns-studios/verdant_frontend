@@ -1,1 +1,2 @@
 - Formatting issues for some mails
+- "Flagged" Filter is useless > remove?

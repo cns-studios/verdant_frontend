@@ -20,6 +20,9 @@ let syncTimer = null;
 let knownInboxIds = new Set();
 let lastSynced = new Map();
 let lastHotkeyAt = new Map();
+let mailboxNextPageToken = new Map();
+let isFetchingMore = false;
+let isDeepSearchActive = false;
 let composeAttachments = [];
 let composeSendMode = "plain";
 let composeDraftId = null;
@@ -106,7 +109,8 @@ function senderInitials(sender) {
   return (addr[0] || "?").toUpperCase();
 }
 
-function senderAvatarUrls(sender) {
+function senderAvatarUrls(sender, mailbox = "") {
+  if ((mailbox || "").toUpperCase() === "SENT") return [];
   const email = extractSenderAddress(sender);
   if (!email || !email.includes("@")) return [];
   const domain = email.split("@")[1];
@@ -118,13 +122,13 @@ function senderAvatarUrls(sender) {
   ];
 }
 
-function applySenderAvatar(container, sender) {
+function applySenderAvatar(container, sender, mailbox = "") {
   if (!container) return;
   container.classList.remove("has-image");
   container.innerHTML = "";
   container.textContent = senderInitials(sender);
 
-  const urls = senderAvatarUrls(sender);
+  const urls = senderAvatarUrls(sender, mailbox);
   if (!urls.length) return;
 
   const img = document.createElement("img");
@@ -234,6 +238,7 @@ function ensureStyles() {
     .pager { display:flex; gap:6px; justify-content:center; padding:10px 12px 14px; border-top:1px solid var(--border); background: var(--surface); }
     .pager button { border:1px solid var(--border); background: var(--surface2); color: var(--text); border-radius:8px; padding:6px 10px; cursor:pointer; font:500 12px 'DM Sans', sans-serif; }
     .pager button.active { background: var(--green); color:#fff; border-color: var(--green); }
+    .list-fetch-indicator { padding:10px 14px; text-align:center; color:var(--text-muted); font:500 12px 'DM Sans', sans-serif; border-top:1px dashed var(--border); }
     .icon-btn.active { background: var(--green-pale); color: var(--green); border:1px solid var(--green-muted); }
     .icon-btn.danger:hover { background:#f5dede !important; color:#8a2e2e !important; border:1px solid #d79f9f; }
     .compose-maximized { width:min(1100px, 96vw) !important; height:min(90vh, 920px) !important; }
@@ -358,9 +363,7 @@ function visibleEmails() {
 }
 
 function pagedEmails() {
-  const list = visibleEmails();
-  const start = (currentPage - 1) * PAGE_SIZE;
-  return list.slice(start, start + PAGE_SIZE);
+  return visibleEmails();
 }
 
 function updateTopActionStates() {
@@ -422,7 +425,7 @@ function renderReadingPane(email) {
   }
 
   if (avatar) {
-    applySenderAvatar(avatar, email.sender || "");
+    applySenderAvatar(avatar, email.sender || "", email.mailbox || "");
   }
 
   renderRecipientsLine(email);
@@ -450,29 +453,57 @@ function renderPager() {
   const pane = document.querySelector(".email-list-pane");
   if (!pane) return;
   pane.querySelector(".pager")?.remove();
+}
 
-  const total = visibleEmails().length;
-  const pages = Math.ceil(total / PAGE_SIZE);
-  if (pages <= 1) return;
+function setListFetchIndicator(text = "") {
+  const pane = document.querySelector(".email-list-pane");
+  if (!pane) return;
+  pane.querySelector(".list-fetch-indicator")?.remove();
+  if (!text) return;
+  const el = document.createElement("div");
+  el.className = "list-fetch-indicator";
+  el.textContent = text;
+  pane.appendChild(el);
+}
 
-  const pager = document.createElement("div");
-  pager.className = "pager";
+async function fetchMoreCurrentMailbox() {
+  if (isFetchingMore || isDeepSearchActive) return;
+  if (searchQuery.trim()) return;
 
-  const start = Math.max(1, currentPage - 2);
-  const end = Math.min(pages, start + 4);
+  const token = mailboxNextPageToken.get(currentMailbox);
+  if (!token) return;
 
-  for (let i = start; i <= end; i += 1) {
-    const btn = document.createElement("button");
-    btn.textContent = String(i);
-    if (i === currentPage) btn.classList.add("active");
-    btn.onclick = () => {
-      currentPage = i;
-      renderEmailList(false);
-    };
-    pager.appendChild(btn);
+  isFetchingMore = true;
+  setListFetchIndicator("Loading more emails...");
+  try {
+    const next = await invoke("sync_mailbox_page", { mailbox: currentMailbox, pageToken: token });
+    mailboxNextPageToken.set(currentMailbox, next || null);
+    currentEmails = await invoke("get_emails", { mailbox: currentMailbox });
+    renderEmailList(false);
+    if (!next) {
+      setListFetchIndicator("No more emails");
+      setTimeout(() => setListFetchIndicator(""), 1000);
+    }
+  } catch (error) {
+    console.error("Failed to fetch more emails", error);
+    setListFetchIndicator("");
+  } finally {
+    isFetchingMore = false;
+    if (mailboxNextPageToken.get(currentMailbox)) {
+      setListFetchIndicator("");
+    }
   }
+}
 
-  pane.appendChild(pager);
+function bindInfiniteScroll() {
+  const list = document.querySelector(".email-list");
+  if (!list) return;
+  list.addEventListener("scroll", () => {
+    const remaining = list.scrollHeight - list.scrollTop - list.clientHeight;
+    if (remaining < 80) {
+      fetchMoreCurrentMailbox().catch(console.error);
+    }
+  });
 }
 
 function renderEmailList(animate = false) {
@@ -507,7 +538,7 @@ function renderEmailList(animate = false) {
       </div>
     `;
 
-    applySenderAvatar(row.querySelector(".sender-avatar"), email.sender || "");
+    applySenderAvatar(row.querySelector(".sender-avatar"), email.sender || "", email.mailbox || "");
 
     row.addEventListener("click", () => {
       selectEmail(email, row).catch(console.error);
@@ -584,6 +615,7 @@ async function loadLocalMailbox(mailbox, animate = false) {
   const mailboxChanged = currentMailbox !== mailbox;
   if (mailboxChanged) {
     selectedEmail = null;
+    isDeepSearchActive = false;
   }
   currentMailbox = mailbox;
   currentEmails = await invoke("get_emails", { mailbox });
@@ -602,7 +634,8 @@ async function syncMailboxInBackground(mailbox) {
 
   if (mailbox !== "STARRED" && mailbox !== "ARCHIVE") {
     showToast("Fetching mails...", "info", 1200);
-    await invoke("sync_mailbox", { mailbox });
+    const next = await invoke("sync_mailbox_page", { mailbox, pageToken: null });
+    mailboxNextPageToken.set(mailbox, next || null);
   }
 
   const latest = await invoke("get_emails", { mailbox });
@@ -665,6 +698,9 @@ function bindMailboxNav() {
       ev.preventDefault();
       items.forEach((n) => n.classList.remove("active"));
       item.classList.add("active");
+      searchQuery = "";
+      const searchInput = document.querySelector(".search-bar input");
+      if (searchInput) searchInput.value = "";
       await openMailbox(map[label], true);
     };
   }
@@ -797,11 +833,57 @@ function bindFilterChips() {
 function bindSearch() {
   const input = document.querySelector(".search-bar input");
   if (!input) return;
+
+  const searchBar = input.closest(".search-bar");
+  let deepBtn = document.getElementById("deep-search-btn");
+  if (!deepBtn && searchBar) {
+    deepBtn = document.createElement("button");
+    deepBtn.id = "deep-search-btn";
+    deepBtn.className = "verdant-btn";
+    deepBtn.textContent = "Deep Search";
+    deepBtn.style.padding = "5px 10px";
+    deepBtn.style.fontSize = "11px";
+    deepBtn.style.display = "none";
+    deepBtn.style.whiteSpace = "nowrap";
+    searchBar.appendChild(deepBtn);
+  }
+
+  const updateDeepButtonVisibility = () => {
+    if (!deepBtn) return;
+    deepBtn.style.display = searchQuery.trim() ? "inline-flex" : "none";
+  };
+
+  deepBtn?.addEventListener("click", async () => {
+    if (!searchQuery.trim()) return;
+    deepBtn.disabled = true;
+    deepBtn.textContent = "Searching...";
+    try {
+      const results = await invoke("deep_search_emails", { query: searchQuery.trim() });
+      isDeepSearchActive = true;
+      currentEmails = results || [];
+      currentPage = 1;
+      renderEmailList(false);
+      setListTitle(currentMailbox, currentEmails.length);
+    } catch (error) {
+      showToast(String(error), "error", 2600);
+    } finally {
+      deepBtn.disabled = false;
+      deepBtn.textContent = "Deep Search";
+      updateDeepButtonVisibility();
+    }
+  });
+
   input.addEventListener("input", () => {
     searchQuery = input.value || "";
+    if (!searchQuery.trim()) {
+      isDeepSearchActive = false;
+    }
     currentPage = 1;
     renderEmailList(false);
+    updateDeepButtonVisibility();
   });
+
+  updateDeepButtonVisibility();
 }
 
 async function openSettingsModal(profile) {
@@ -1321,6 +1403,7 @@ async function initializeConnectedUI() {
   bindReadingActions();
   bindFilterChips();
   bindSearch();
+  bindInfiniteScroll();
   bindComposeWindowControls();
   bindComposeFormatting();
   bindComposeAttachments();
