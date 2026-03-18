@@ -6,6 +6,7 @@ const SYNC_INTERVAL_MS = 45000;
 const RESYNC_COOLDOWN_MS = 5 * 60 * 1000;
 const HOTKEY_COOLDOWN_MS = {
   compose: 350,
+  composeMaximize: 200,
   refresh: 1800,
   settings: 1200,
   search: 250,
@@ -43,6 +44,7 @@ const recipientSuggestState = {
 const defaultHotkeys = {
   enabled: true,
   compose: "ctrl+n",
+  composeMaximize: "h",
   refresh: "ctrl+r",
   settings: "ctrl+,",
   search: "ctrl+k",
@@ -1380,6 +1382,7 @@ async function openSettingsModal(profile) {
     <section class="settings-pane" data-pane="shortcuts">
       <label class="settings-switch"><input type="checkbox" id="hk-enabled" ${hotkeys.enabled ? "checked" : ""}> Enable keyboard shortcuts</label>
       <div class="settings-row"><span>Compose</span><input id="hk-compose" value="${escapeHtml(hotkeys.compose)}" /></div>
+      <div class="settings-row"><span>Compose Maximize</span><input id="hk-compose-maximize" value="${escapeHtml(hotkeys.composeMaximize)}" /></div>
       <div class="settings-row"><span>Refresh</span><input id="hk-refresh" value="${escapeHtml(hotkeys.refresh)}" /></div>
       <div class="settings-row"><span>Settings</span><input id="hk-settings" value="${escapeHtml(hotkeys.settings)}" /></div>
       <div class="settings-row"><span>Search</span><input id="hk-search" value="${escapeHtml(hotkeys.search)}" /></div>
@@ -1417,6 +1420,7 @@ async function openSettingsModal(profile) {
     hotkeys = {
       enabled: !!panel.querySelector("#hk-enabled")?.checked,
       compose: normalizeCombo(panel.querySelector("#hk-compose")?.value || defaultHotkeys.compose),
+      composeMaximize: normalizeCombo(panel.querySelector("#hk-compose-maximize")?.value || defaultHotkeys.composeMaximize),
       refresh: normalizeCombo(panel.querySelector("#hk-refresh")?.value || defaultHotkeys.refresh),
       settings: normalizeCombo(panel.querySelector("#hk-settings")?.value || defaultHotkeys.settings),
       search: normalizeCombo(panel.querySelector("#hk-search")?.value || defaultHotkeys.search),
@@ -1489,13 +1493,17 @@ function startPeriodicSync() {
 
 function bindComposeWindowControls() {
   const maxBtn = document.getElementById("compose-max-btn");
-  if (!maxBtn) return;
+  const modal = document.getElementById("composeModal");
+  if (!maxBtn || !modal) return;
 
-  maxBtn.onclick = () => {
-    const modal = document.querySelector(".compose-modal");
-    if (!modal) return;
-    modal.classList.toggle("compose-maximized");
+  const toggleComposeMaximized = () => {
+    const dialog = modal.querySelector(".compose-modal");
+    if (!dialog) return;
+    dialog.classList.toggle("compose-maximized");
   };
+
+  maxBtn.onclick = toggleComposeMaximized;
+  window.toggleComposeMaximized = toggleComposeMaximized;
 }
 
 function bindAppHeaderControls() {
@@ -2131,6 +2139,20 @@ function bindHotkeys() {
       event.preventDefault();
       if (!canRunHotkey("compose")) return;
       if (typeof window.openCompose === "function") window.openCompose();
+      return;
+    }
+
+    if (combo === hotkeys.composeMaximize) {
+      if (!isComposeOpen()) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest("input, textarea, [contenteditable='true']")) {
+        return;
+      }
+      event.preventDefault();
+      if (!canRunHotkey("composeMaximize")) return;
+      if (typeof window.toggleComposeMaximized === "function") {
+        window.toggleComposeMaximized();
+      }
       return;
     }
 
