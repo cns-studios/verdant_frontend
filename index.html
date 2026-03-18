@@ -32,6 +32,93 @@
     color: var(--text);
     height: 100vh;
     display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .app-header {
+    height: 42px;
+    min-height: 42px;
+    background: linear-gradient(180deg, var(--surface), #ebe8e2);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px 0 12px;
+    gap: 12px;
+  }
+
+  .app-header-left {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+  }
+
+  .app-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 0 3px var(--green-pale);
+    flex-shrink: 0;
+  }
+
+  .app-title {
+    font: 500 13px 'Fraunces', serif;
+    color: var(--text);
+    letter-spacing: -0.2px;
+    white-space: nowrap;
+  }
+
+  .app-subtitle {
+    font: 400 11px 'DM Sans', sans-serif;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .app-header-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .app-win-btn {
+    width: 28px;
+    height: 24px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-mid);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all .12s ease;
+  }
+
+  .app-win-btn:hover {
+    background: var(--white);
+    color: var(--text);
+  }
+
+  .app-win-btn.close:hover {
+    background: #f3dfdf;
+    border-color: #ddb5b5;
+    color: #8a2e2e;
+  }
+
+  .app-win-btn svg {
+    width: 12px;
+    height: 12px;
+    stroke-width: 2.2;
+  }
+
+  .app-content {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    width: 100%;
     overflow: hidden;
   }
 
@@ -791,6 +878,26 @@
 </head>
 <body>
 
+<header class="app-header" data-tauri-drag-region>
+  <div class="app-header-left" data-tauri-drag-region>
+    <span class="app-dot"></span>
+    <span class="app-title">Verdant Mail</span>
+    <span class="app-subtitle">- Inbox</span>
+  </div>
+  <div class="app-header-controls">
+    <button class="app-win-btn" id="app-min-btn" aria-label="Minimize window" title="Minimize">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    <button class="app-win-btn" id="app-max-btn" aria-label="Maximize window" title="Maximize">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="1"/></svg>
+    </button>
+    <button class="app-win-btn close" id="app-close-btn" aria-label="Close window" title="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="app-content">
 <aside class="sidebar">
   <div class="sidebar-header">
     <div class="logo">
@@ -1030,6 +1137,8 @@
     </div>
   </div>
 </div>
+
+  </div>
 
 <div class="modal-overlay" id="composeModal" onclick="handleOverlayClick(event)">
   <div class="compose-modal">

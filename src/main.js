@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 const PAGE_SIZE = 50;
 const SYNC_INTERVAL_MS = 45000;
@@ -24,6 +25,7 @@ let mailboxNextPageToken = new Map();
 let isFetchingMore = false;
 let isDeepSearchActive = false;
 let isReadingPaneHidden = false;
+let appHeaderControlsBound = false;
 let composeAttachments = [];
 let composeSendMode = "plain";
 let composeDraftId = null;
@@ -370,6 +372,7 @@ function showOverlay(title, message, buttons) {
 
   document.body.appendChild(overlay);
   requestAnimationFrame(() => overlay.classList.add("open"));
+  refreshAppHeaderSubtitle();
 }
 
 function closeOverlay(immediate = false) {
@@ -377,10 +380,14 @@ function closeOverlay(immediate = false) {
   if (!overlay) return;
   if (immediate) {
     overlay.remove();
+    refreshAppHeaderSubtitle();
     return;
   }
   overlay.classList.remove("open");
-  setTimeout(() => overlay.remove(), 180);
+  setTimeout(() => {
+    overlay.remove();
+    refreshAppHeaderSubtitle();
+  }, 180);
 }
 
 function clearMockImmediately() {
@@ -393,6 +400,29 @@ function setListTitle(mailbox, count) {
   const countEl = document.querySelector(".list-count");
   if (title) title.textContent = mailboxTitle(mailbox);
   if (countEl) countEl.textContent = `${count} messages`;
+}
+
+function setAppHeaderSubtitle(label) {
+  const subtitle = document.querySelector(".app-subtitle");
+  if (!subtitle) return;
+  const clean = (label || "Mailbox").trim();
+  subtitle.textContent = `- ${clean}`;
+}
+
+function resolveAppHeaderSubtitle() {
+  if (isComposeOpen()) return "Compose";
+
+  const overlay = document.getElementById("verdant-overlay");
+  if (overlay) {
+    const heading = overlay.querySelector(".verdant-head h2")?.textContent?.trim();
+    if (heading) return heading;
+  }
+
+  return mailboxTitle(currentMailbox);
+}
+
+function refreshAppHeaderSubtitle() {
+  setAppHeaderSubtitle(resolveAppHeaderSubtitle());
 }
 
 function setReadingPaneHidden(hidden) {
@@ -907,6 +937,7 @@ async function loadLocalMailbox(mailbox, animate = false) {
   currentEmails = await invoke("get_emails", { mailbox });
   currentPage = 1;
   renderEmailList(animate);
+  refreshAppHeaderSubtitle();
   await refreshCounts();
 }
 
@@ -1352,6 +1383,50 @@ function bindComposeWindowControls() {
   };
 }
 
+function bindAppHeaderControls() {
+  if (appHeaderControlsBound) return;
+  const minBtn = document.getElementById("app-min-btn");
+  const maxBtn = document.getElementById("app-max-btn");
+  const closeBtn = document.getElementById("app-close-btn");
+  const header = document.querySelector(".app-header");
+  if (!minBtn || !maxBtn || !closeBtn || !header) return;
+  appHeaderControlsBound = true;
+
+  let appWindow;
+  try {
+    appWindow = getCurrentWindow();
+  } catch {
+    // Running in plain browser preview without Tauri window integration.
+    minBtn.style.display = "none";
+    maxBtn.style.display = "none";
+    closeBtn.style.display = "none";
+  }
+
+  if (appWindow) {
+    minBtn.addEventListener("click", async () => {
+      await appWindow.minimize();
+    });
+
+    maxBtn.addEventListener("click", async () => {
+      await appWindow.toggleMaximize();
+    });
+
+    closeBtn.addEventListener("click", async () => {
+      await appWindow.close();
+    });
+
+    header.addEventListener("dblclick", async (event) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".app-header-controls")) return;
+      await appWindow.toggleMaximize();
+    });
+  }
+
+  window.addEventListener("verdant-compose-opened", refreshAppHeaderSubtitle);
+  window.addEventListener("verdant-compose-closed", refreshAppHeaderSubtitle);
+  refreshAppHeaderSubtitle();
+}
+
 function normalizeComposeHtml(rawHtml) {
   const trimmed = (rawHtml || "").trim();
   if (!trimmed || trimmed === "<br>" || trimmed === "<div><br></div>") {
@@ -1693,6 +1768,7 @@ function bindHotkeys() {
 }
 
 async function initializeConnectedUI() {
+  bindAppHeaderControls();
   bindMailboxNav();
   bindReadingActions();
   bindFilterChips();
@@ -1716,6 +1792,7 @@ async function initializeConnectedUI() {
 
 document.addEventListener("DOMContentLoaded", async () => {
   ensureStyles();
+  bindAppHeaderControls();
   clearMockImmediately();
   document.querySelector(".reply-bar")?.remove();
 
