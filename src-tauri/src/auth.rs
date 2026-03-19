@@ -1,4 +1,5 @@
 use oauth2::{
+    AuthType,
     basic::BasicClient,
     reqwest::async_http_client,
     AuthUrl,
@@ -35,20 +36,36 @@ fn google_client() -> Result<BasicClient, String> {
     let client_id = std::env::var("GOOGLE_CLIENT_ID")
         .map_err(|_| "Missing GOOGLE_CLIENT_ID env var".to_string())?;
 
-    let client_secret = std::env::var("GOOGLE_CLIENT_SECRET").ok();
+    let client_secret = std::env::var("GOOGLE_CLIENT_SECRET").ok().and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(ClientSecret::new(trimmed.to_string()))
+        }
+    });
+    let has_client_secret = client_secret.is_some();
 
     let auth_url = AuthUrl::new(AUTH_URL.to_string()).map_err(|e| e.to_string())?;
     let token_url = TokenUrl::new(TOKEN_URL.to_string()).map_err(|e| e.to_string())?;
     let redirect = RedirectUrl::new(format!("http://127.0.0.1:{}/callback", REDIRECT_PORT))
         .map_err(|e| e.to_string())?;
 
-    Ok(BasicClient::new(
+    let client = BasicClient::new(
         ClientId::new(client_id),
-        client_secret.map(ClientSecret::new),
+        client_secret,
         auth_url,
         Some(token_url),
     )
-    .set_redirect_uri(redirect))
+    .set_redirect_uri(redirect);
+
+    let client = if has_client_secret {
+        client
+    } else {
+        client.set_auth_type(AuthType::RequestBody)
+    };
+
+    Ok(client)
 }
 
 fn wait_for_auth_code(port: u16, expected_state: String) -> Result<String, String> {

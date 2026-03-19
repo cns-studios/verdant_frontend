@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 const PAGE_SIZE = 50;
@@ -52,6 +53,13 @@ const defaultHotkeys = {
 };
 
 let hotkeys = loadHotkeys();
+const UPDATE_PREFS_KEY = "verdant.updatePrefs";
+const defaultUpdatePrefs = {
+  autoCheck: true,
+  autoDownload: false,
+  channel: "stable",
+};
+let updatePrefs = loadUpdatePrefs();
 
 function loadHotkeys() {
   try {
@@ -64,6 +72,97 @@ function loadHotkeys() {
 
 function saveHotkeys(next) {
   localStorage.setItem("verdant.hotkeys", JSON.stringify(next));
+}
+
+function loadUpdatePrefs() {
+  try {
+    const raw = localStorage.getItem(UPDATE_PREFS_KEY);
+    const parsed = raw ? { ...defaultUpdatePrefs, ...JSON.parse(raw) } : { ...defaultUpdatePrefs };
+    parsed.channel = parsed.channel === "nightly" ? "nightly" : "stable";
+    return parsed;
+  } catch {
+    return { ...defaultUpdatePrefs };
+  }
+}
+
+function saveUpdatePrefs(next) {
+  updatePrefs = { ...defaultUpdatePrefs, ...next };
+  updatePrefs.channel = updatePrefs.channel === "nightly" ? "nightly" : "stable";
+  localStorage.setItem(UPDATE_PREFS_KEY, JSON.stringify(updatePrefs));
+}
+
+function setSettingsUpdateStatus(message, isError = false) {
+  const statusEl = document.getElementById("settings-update-status");
+  if (!statusEl) return;
+  statusEl.textContent = message;
+  statusEl.style.color = isError ? "#8a3b3b" : "";
+}
+
+function setSettingsUpdateDownloadButtonEnabled(enabled) {
+  const button = document.getElementById("settings-download-update");
+  if (!button) return;
+  button.disabled = !enabled;
+}
+
+async function checkForAppUpdates(options = {}) {
+  const {
+    silent = true,
+    autoDownload = false,
+    updateSettingsUi = false,
+    channel = updatePrefs.channel,
+  } = options;
+
+  try {
+    const info = await invoke("check_for_updates", { channel });
+
+    if (updateSettingsUi) {
+      if (info.updateAvailable) {
+        const channelLabel = channel === "nightly" ? "Nightly" : "Stable";
+        setSettingsUpdateStatus(`${channelLabel} update available: v${info.latestVersion}`);
+      } else {
+        setSettingsUpdateStatus(`Up to date on ${channel} (v${info.currentVersion})`);
+      }
+      setSettingsUpdateDownloadButtonEnabled(!!info.updateAvailable);
+    }
+
+    if (!info.updateAvailable) {
+      if (!silent) showToast("You are on the latest version");
+      return info;
+    }
+
+    if (!silent) {
+      showToast(`${channel} update v${info.latestVersion} available`);
+    }
+
+    if (autoDownload) {
+      const downloaded = await invoke("download_latest_update", { channel });
+      if (updateSettingsUi) {
+        setSettingsUpdateStatus(`Downloaded ${downloaded.fileName}`);
+      }
+      showToast(`Update downloaded: ${downloaded.fileName}`);
+    }
+
+    return info;
+  } catch (error) {
+    if (updateSettingsUi) {
+      setSettingsUpdateStatus("Update check failed", true);
+      setSettingsUpdateDownloadButtonEnabled(false);
+    }
+    if (!silent) {
+      showToast(`Update check failed: ${String(error)}`, "error");
+    }
+    return null;
+  }
+}
+
+async function runAutomaticUpdateFlow() {
+  if (!updatePrefs.autoCheck) return;
+  await checkForAppUpdates({
+    silent: true,
+    autoDownload: updatePrefs.autoDownload,
+    updateSettingsUi: false,
+    channel: updatePrefs.channel,
+  });
 }
 
 function normalizeCombo(input) {
@@ -364,7 +463,7 @@ function ensureStyles() {
     .action-menu button:hover { background: var(--surface2); }
     .settings-grid { display:grid; gap:10px; margin-top:12px; }
     .settings-row { display:grid; grid-template-columns: 1fr 160px; align-items:center; gap:10px; }
-    .settings-row input { height:34px; border-radius:8px; border:1px solid var(--border); background: var(--bg); padding:0 10px; font:400 12px 'DM Sans', sans-serif; }
+    .settings-row input, .settings-row select { height:34px; border-radius:8px; border:1px solid var(--border); background: var(--bg); padding:0 10px; font:400 12px 'DM Sans', sans-serif; }
     .settings-switch { display:flex; align-items:center; gap:8px; font:400 12px 'DM Sans', sans-serif; color:var(--text); }
     .settings-tabs { display:flex; gap:8px; margin-top:10px; border-bottom:1px solid var(--border); padding-bottom:10px; }
     .settings-tab { border:1px solid var(--border); background: var(--surface2); color:var(--text-mid); border-radius:999px; padding:6px 12px; font:500 12px 'DM Sans', sans-serif; cursor:pointer; }
@@ -1393,18 +1492,35 @@ async function openSettingsModal(profile) {
 
     <section class="settings-pane" data-pane="app">
       <div class="settings-card">
+        <div class="settings-info-row"><span>Installed Version</span><strong id="settings-installed-version">Loading...</strong></div>
+        <div class="settings-info-row"><span>Update Status</span><strong id="settings-update-status">Not checked yet</strong></div>
+        <div class="settings-row"><span>Update Channel</span><select id="update-channel"><option value="stable" ${updatePrefs.channel === "stable" ? "selected" : ""}>Stable</option><option value="nightly" ${updatePrefs.channel === "nightly" ? "selected" : ""}>Nightly (beta)</option></select></div>
+        <label class="settings-switch"><input type="checkbox" id="update-auto-check" ${updatePrefs.autoCheck ? "checked" : ""}> Automatically check for updates at startup</label>
+        <label class="settings-switch"><input type="checkbox" id="update-auto-download" ${updatePrefs.autoDownload ? "checked" : ""}> Automatically download update when available</label>
         <div class="settings-help">
           Verdant keeps a local mail cache database on your device to make loading and searching faster.
           Clearing the local DB only removes cached messages on this device. Your Gmail account and server-side messages are not deleted.
         </div>
       </div>
       <div class="settings-actions">
+        <button class="verdant-btn" id="settings-check-update">Check for Updates</button>
+        <button class="verdant-btn" id="settings-download-update" disabled>Download Latest Update</button>
         <button class="verdant-btn" id="settings-sync">Sync Emails Now</button>
         <button class="verdant-btn" id="settings-clear">Clear Local DB</button>
       </div>
     </section>
   `;
   panel.appendChild(grid);
+
+  getVersion()
+    .then((version) => {
+      const versionEl = panel.querySelector("#settings-installed-version");
+      if (versionEl) versionEl.textContent = `v${version}`;
+    })
+    .catch(() => {
+      const versionEl = panel.querySelector("#settings-installed-version");
+      if (versionEl) versionEl.textContent = "Unknown";
+    });
 
   const tabs = Array.from(panel.querySelectorAll(".settings-tab"));
   const panes = Array.from(panel.querySelectorAll(".settings-pane"));
@@ -1428,6 +1544,71 @@ async function openSettingsModal(profile) {
     };
     saveHotkeys(hotkeys);
     showToast("Shortcuts saved");
+  });
+
+  panel.querySelector("#update-auto-check")?.addEventListener("change", (event) => {
+    const target = event.target;
+    const next = {
+      ...updatePrefs,
+      autoCheck: !!target?.checked,
+    };
+    saveUpdatePrefs(next);
+  });
+
+  panel.querySelector("#update-channel")?.addEventListener("change", (event) => {
+    const target = event.target;
+    const value = target?.value === "nightly" ? "nightly" : "stable";
+    const next = {
+      ...updatePrefs,
+      channel: value,
+    };
+    saveUpdatePrefs(next);
+    setSettingsUpdateStatus(`Channel set to ${value}`);
+    setSettingsUpdateDownloadButtonEnabled(false);
+  });
+
+  panel.querySelector("#update-auto-download")?.addEventListener("change", (event) => {
+    const target = event.target;
+    const next = {
+      ...updatePrefs,
+      autoDownload: !!target?.checked,
+    };
+    saveUpdatePrefs(next);
+  });
+
+  panel.querySelector("#settings-check-update")?.addEventListener("click", async () => {
+    setSettingsUpdateStatus("Checking for updates...");
+    await checkForAppUpdates({
+      silent: false,
+      autoDownload: false,
+      updateSettingsUi: true,
+      channel: updatePrefs.channel,
+    });
+  });
+
+  panel.querySelector("#settings-download-update")?.addEventListener("click", async () => {
+    setSettingsUpdateStatus("Checking release assets...");
+    const info = await checkForAppUpdates({
+      silent: true,
+      autoDownload: false,
+      updateSettingsUi: true,
+      channel: updatePrefs.channel,
+    });
+
+    if (!info?.updateAvailable) {
+      showToast("No update available");
+      return;
+    }
+
+    setSettingsUpdateStatus("Downloading update package...");
+    try {
+      const downloaded = await invoke("download_latest_update", { channel: updatePrefs.channel });
+      setSettingsUpdateStatus(`Downloaded ${downloaded.fileName}`);
+      showToast(`Update downloaded: ${downloaded.fileName}`);
+    } catch (error) {
+      setSettingsUpdateStatus("Update download failed", true);
+      showToast(`Update download failed: ${String(error)}`, "error");
+    }
   });
 
   panel.querySelector("#settings-sync")?.addEventListener("click", async () => {
@@ -2235,6 +2416,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       ]);
       return;
     }
+
+    runAutomaticUpdateFlow().catch((error) => {
+      console.warn("Automatic update check failed", error);
+    });
 
     if (!status.connected) {
       showOnboardingScreen();

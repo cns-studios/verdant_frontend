@@ -6,6 +6,9 @@ use db::{clear_emails, clear_tokens, get_token, init_db, upsert_token, Email, St
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use semver::Version;
+use std::env;
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 use tokio::sync::Mutex;
@@ -58,6 +61,33 @@ struct AttachmentDownload {
     data_base64: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateInfo {
+    current_version: String,
+    latest_version: String,
+    release_name: String,
+    published_at: String,
+    notes: String,
+    update_available: bool,
+    download_asset_name: String,
+    download_url: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateDownloadResult {
+    file_path: String,
+    file_name: String,
+    version: String,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum UpdateChannel {
+    Stable,
+    Nightly,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct EmailAttachment {
@@ -65,6 +95,298 @@ struct EmailAttachment {
     #[serde(default)]
     content_type: String,
     data_base64: String,
+}
+
+fn updater_repo_owner() -> String {
+    env::var("UPDATER_REPO_OWNER").unwrap_or_else(|_| "cns-studios".to_string())
+}
+
+fn updater_repo_name() -> String {
+    env::var("UPDATER_REPO_NAME").unwrap_or_else(|_| "verdant_frontend".to_string())
+}
+
+fn parse_update_channel(raw: Option<String>) -> UpdateChannel {
+    match raw
+        .unwrap_or_else(|| "stable".to_string())
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "nightly" | "beta" => UpdateChannel::Nightly,
+        _ => UpdateChannel::Stable,
+    }
+}
+
+fn normalize_version(raw: &str) -> String {
+    raw.trim().trim_start_matches('v').to_string()
+}
+
+fn version_is_newer(current: &str, latest: &str) -> bool {
+    match (Version::parse(current), Version::parse(latest)) {
+        (Ok(c), Ok(l)) => l > c,
+        _ => current != latest,
+    }
+}
+
+fn preferred_asset_score(name: &str) -> i32 {
+    let lower = name.to_ascii_lowercase();
+    if cfg!(target_os = "windows") {
+        if lower.ends_with(".msi") {
+            return 100;
+        }
+        if lower.ends_with(".exe") {
+            return 90;
+        }
+        if lower.contains("nsis") {
+            return 80;
+        }
+    }
+
+    if cfg!(target_os = "linux") {
+        if lower.ends_with(".appimage") {
+            return 100;
+        }
+        if lower.ends_with(".deb") {
+            return 85;
+        }
+        if lower.ends_with(".rpm") {
+            return 80;
+        }
+        if lower.contains("arch") || lower.ends_with(".pkg.tar.zst") {
+            return 75;
+        }
+    }
+
+    if cfg!(target_os = "macos") {
+        if lower.ends_with(".dmg") {
+            return 100;
+        }
+        if lower.ends_with(".app.tar.gz") {
+            return 90;
+        }
+    }
+
+    1
+}
+
+fn downloads_dir() -> Result<PathBuf, String> {
+    if cfg!(target_os = "windows") {
+        if let Ok(base) = env::var("USERPROFILE") {
+            return Ok(PathBuf::from(base).join("Downloads"));
+        }
+    } else if let Ok(base) = env::var("HOME") {
+        return Ok(PathBuf::from(base).join("Downloads"));
+    }
+
+    env::current_dir()
+        .map_err(|e| e.to_string())
+        .map(|p| p.join("downloads"))
+}
+
+async fn fetch_latest_release() -> Result<Value, String> {
+    let owner = updater_repo_owner();
+    let repo = updater_repo_name();
+    let url = format!(
+        "https://api.github.com/repos/{}/{}/releases/latest",
+        owner, repo
+    );
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(url)
+        .header(reqwest::header::USER_AGENT, "verdant-desktop-updater")
+        .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("GitHub release lookup failed: {} {}", status, body));
+    }
+
+    response.json::<Value>().await.map_err(|e| e.to_string())
+}
+
+async fn fetch_latest_nightly_release() -> Result<Value, String> {
+    let owner = updater_repo_owner();
+    let repo = updater_repo_name();
+    let url = format!(
+        "https://api.github.com/repos/{}/{}/releases?per_page=30",
+        owner, repo
+    );
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(url)
+        .header(reqwest::header::USER_AGENT, "verdant-desktop-updater")
+        .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!(
+            "GitHub nightly release lookup failed: {} {}",
+            status, body
+        ));
+    }
+
+    let releases = response.json::<Value>().await.map_err(|e| e.to_string())?;
+    let Some(items) = releases.as_array() else {
+        return Err("Unexpected nightly releases response".to_string());
+    };
+
+    for release in items {
+        let is_prerelease = release
+            .get("prerelease")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let is_draft = release
+            .get("draft")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let has_assets = release
+            .get("assets")
+            .and_then(Value::as_array)
+            .map(|a| !a.is_empty())
+            .unwrap_or(false);
+
+        if is_prerelease && !is_draft && has_assets {
+            return Ok(release.clone());
+        }
+    }
+
+    Err("No nightly prerelease with assets found".to_string())
+}
+
+async fn fetch_release_for_channel(channel: UpdateChannel) -> Result<Value, String> {
+    match channel {
+        UpdateChannel::Stable => fetch_latest_release().await,
+        UpdateChannel::Nightly => fetch_latest_nightly_release().await,
+    }
+}
+
+fn select_best_asset(release: &Value) -> Result<(String, String), String> {
+    let assets = release
+        .get("assets")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "Release has no assets".to_string())?;
+
+    let mut chosen_name = String::new();
+    let mut chosen_url = String::new();
+    let mut best_score = -1;
+
+    for asset in assets {
+        let Some(name) = asset.get("name").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(url) = asset
+            .get("browser_download_url")
+            .and_then(Value::as_str)
+        else {
+            continue;
+        };
+        let score = preferred_asset_score(name);
+        if score > best_score {
+            best_score = score;
+            chosen_name = name.to_string();
+            chosen_url = url.to_string();
+        }
+    }
+
+    if chosen_url.is_empty() {
+        return Err("No downloadable release asset found".to_string());
+    }
+
+    Ok((chosen_name, chosen_url))
+}
+
+#[tauri::command]
+async fn check_for_updates(channel: Option<String>) -> Result<UpdateInfo, String> {
+    let channel = parse_update_channel(channel);
+    let current_version = normalize_version(env!("CARGO_PKG_VERSION"));
+    let release = fetch_release_for_channel(channel).await?;
+
+    let latest_raw = release
+        .get("tag_name")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let latest_version = normalize_version(latest_raw);
+    if latest_version.is_empty() {
+        return Err("Latest release has no valid tag_name".to_string());
+    }
+
+    let update_available = if channel == UpdateChannel::Nightly {
+        current_version != latest_version
+    } else {
+        version_is_newer(&current_version, &latest_version)
+    };
+    let release_name = release
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let published_at = release
+        .get("published_at")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let notes = release
+        .get("body")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+
+    let (download_asset_name, download_url) = select_best_asset(&release)?;
+
+    Ok(UpdateInfo {
+        current_version,
+        latest_version,
+        release_name,
+        published_at,
+        notes,
+        update_available,
+        download_asset_name,
+        download_url,
+    })
+}
+
+#[tauri::command]
+async fn download_latest_update(channel: Option<String>) -> Result<UpdateDownloadResult, String> {
+    let info = check_for_updates(channel).await?;
+    if !info.update_available {
+        return Err("No update available".to_string());
+    }
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&info.download_url)
+        .header(reqwest::header::USER_AGENT, "verdant-desktop-updater")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("Update download failed: {} {}", status, body));
+    }
+
+    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+    let folder = downloads_dir()?;
+    std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+    let file_path = folder.join(&info.download_asset_name);
+    std::fs::write(&file_path, &bytes).map_err(|e| e.to_string())?;
+
+    Ok(UpdateDownloadResult {
+        file_path: file_path.to_string_lossy().to_string(),
+        file_name: info.download_asset_name,
+        version: info.latest_version,
+    })
 }
 
 fn sanitize_header_value(input: &str) -> String {
@@ -1301,7 +1623,9 @@ pub fn run() {
             save_draft,
             send_existing_draft,
             download_attachment,
-            auth_status
+            auth_status,
+            check_for_updates,
+            download_latest_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

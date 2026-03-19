@@ -1,6 +1,6 @@
 {
-  "name": "verdant_frontend",
-  "version": "0.0.0",
+  "name": "Verdant Desktop",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {

@@ -1,0 +1,41 @@
+name: Promote Nightly To Stable
+
+on:
+  workflow_dispatch:
+    inputs:
+      nightly_tag:
+        description: Nightly prerelease tag to promote (for example nightly-v0.1.0-123)
+        required: true
+        type: string
+      stable_version:
+        description: Stable version to publish (for example 0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    name: Promote Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Nightly Assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p stable-assets
+          gh release download "${{ inputs.nightly_tag }}" -D stable-assets
+
+      - name: Publish Stable Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.stable_version }}
+          name: Stable v${{ inputs.stable_version }}
+          prerelease: false
+          make_latest: true
+          files: |
+            stable-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
