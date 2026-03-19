@@ -1,16 +1,20 @@
 {
   "name": "verdant-desktop",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "icons": "node scripts/generate-icons.js",
+    "icons:help": "cat src-tauri/icons/README.md"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.10.1",
+    "jimp": "^0.22.0",
+    "sharp": "^0.33.0",
     "vite": "^8.0.0"
   },
   "dependencies": {

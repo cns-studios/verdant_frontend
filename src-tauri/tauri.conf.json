@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Verdant Desktop",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "identifier": "com.cns-studios.verdant",
   "build": {
     "frontendDist": "../dist",
@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "Verdant Mail",
-        "width": 800,
-        "height": 600,
+        "width": 1200,
+        "height": 900,
         "resizable": true,
         "decorations": false,
         "fullscreen": false
