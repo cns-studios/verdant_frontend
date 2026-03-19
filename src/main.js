@@ -1512,6 +1512,7 @@ function bindAppHeaderControls() {
   const maxBtn = document.getElementById("app-max-btn");
   const closeBtn = document.getElementById("app-close-btn");
   const header = document.querySelector(".app-header");
+  const controls = document.querySelector(".app-header-controls");
   if (!minBtn || !maxBtn || !closeBtn || !header) return;
   appHeaderControlsBound = true;
 
@@ -1526,6 +1527,20 @@ function bindAppHeaderControls() {
   }
 
   if (appWindow) {
+    controls?.setAttribute("data-tauri-drag-region", "false");
+    minBtn.setAttribute("data-tauri-drag-region", "false");
+    maxBtn.setAttribute("data-tauri-drag-region", "false");
+    closeBtn.setAttribute("data-tauri-drag-region", "false");
+
+    header.addEventListener("pointerdown", async (event) => {
+      if (event.button !== 0) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest(".app-header-controls")) return;
+      if (event.detail > 1) return;
+      await appWindow.startDragging();
+    });
+
     minBtn.addEventListener("click", async () => {
       await appWindow.minimize();
     });
