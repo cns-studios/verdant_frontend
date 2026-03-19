@@ -1,6 +1,6 @@
 [package]
 name = "Verdant-Desktop"
-version = "1.0.0"
+version = "1.0.4"
 description = "Verdant - a calm mail experience"
 authors = ["you"]
 license = ""

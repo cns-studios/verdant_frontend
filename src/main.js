@@ -1701,17 +1701,16 @@ function bindAppHeaderControls() {
   try {
     appWindow = getCurrentWindow();
   } catch {
-    // Running in plain browser preview without Tauri window integration.
     minBtn.style.display = "none";
     maxBtn.style.display = "none";
     closeBtn.style.display = "none";
   }
 
   if (appWindow) {
-    controls?.setAttribute("data-tauri-drag-region", "false");
-    minBtn.setAttribute("data-tauri-drag-region", "false");
-    maxBtn.setAttribute("data-tauri-drag-region", "false");
-    closeBtn.setAttribute("data-tauri-drag-region", "false");
+    controls?.removeAttribute("data-tauri-drag-region");
+    minBtn.removeAttribute("data-tauri-drag-region");
+    maxBtn.removeAttribute("data-tauri-drag-region");
+    closeBtn.removeAttribute("data-tauri-drag-region");
 
     header.addEventListener("pointerdown", async (event) => {
       if (event.button !== 0) return;
@@ -1719,25 +1718,45 @@ function bindAppHeaderControls() {
       if (!(target instanceof Element)) return;
       if (target.closest(".app-header-controls")) return;
       if (event.detail > 1) return;
-      await appWindow.startDragging();
+      try {
+        await appWindow.startDragging();
+      } catch (error) {
+        console.warn("startDragging failed", error);
+      }
     });
 
     minBtn.addEventListener("click", async () => {
-      await appWindow.minimize();
+      try {
+        await appWindow.minimize();
+      } catch (error) {
+        console.warn("minimize failed", error);
+      }
     });
 
     maxBtn.addEventListener("click", async () => {
-      await appWindow.toggleMaximize();
+      try {
+        await appWindow.toggleMaximize();
+      } catch (error) {
+        console.warn("toggleMaximize failed", error);
+      }
     });
 
     closeBtn.addEventListener("click", async () => {
-      await appWindow.close();
+      try {
+        await appWindow.close();
+      } catch (error) {
+        console.warn("close failed", error);
+      }
     });
 
     header.addEventListener("dblclick", async (event) => {
       const target = event.target;
       if (target instanceof Element && target.closest(".app-header-controls")) return;
-      await appWindow.toggleMaximize();
+      try {
+        await appWindow.toggleMaximize();
+      } catch (error) {
+        console.warn("header double-click maximize failed", error);
+      }
     });
   }
 
