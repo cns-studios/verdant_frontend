@@ -93,7 +93,7 @@ jobs:
             pacman -Sy --noconfirm --needed base-devel
             useradd -m builder
             chown -R builder:builder /work
-            su builder -c "cd /work && makepkg -f --noconfirm"
+            su builder -c "cd /work && makepkg -f --nodeps --noconfirm"
           '
 
       - name: Collect Linux Artifacts
