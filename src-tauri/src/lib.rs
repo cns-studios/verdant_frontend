@@ -102,7 +102,7 @@ fn updater_repo_owner() -> String {
 }
 
 fn updater_repo_name() -> String {
-    env::var("UPDATER_REPO_NAME").unwrap_or_else(|_| "verdant_frontend".to_string())
+    env::var("UPDATER_REPO_NAME").unwrap_or_else(|_| "Verdant-Desktop".to_string())
 }
 
 fn parse_update_channel(raw: Option<String>) -> UpdateChannel {
