@@ -78,6 +78,7 @@ jobs:
           url="https://github.com/cns-studios/verdant_frontend"
           license=('custom')
           depends=('gtk3' 'webkit2gtk-4.1' 'libayatana-appindicator')
+          options=('!debug' '!strip')
           source=('verdant.AppImage')
           sha256sums=('SKIP')
 
@@ -110,6 +111,10 @@ jobs:
 
           mkdir -p out/linux
           cp out/archpkg/*.pkg.tar.zst out/linux/
+          rm -f out/linux/*-debug-*.pkg.tar.zst
+          for f in out/linux/*.pkg.tar.zst; do
+            mv "$f" "${f%.pkg.tar.zst}.pacman"
+          done
 
       - name: Collect Linux Artifacts
         run: |
@@ -209,7 +214,7 @@ jobs:
             release-assets/*.deb
             release-assets/*.rpm
             release-assets/*.AppImage
-            release-assets/*.pkg.tar.zst
+            release-assets/*.pacman
             release-assets/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
