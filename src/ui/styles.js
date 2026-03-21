@@ -42,6 +42,8 @@ export function ensureStyles() {
     .settings-help { font:400 12px/1.5 'DM Sans', sans-serif; color:var(--text-mid); margin-top:2px; }
     .settings-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
     .settings-danger { color:#8a3b3b; border-color:#dcb9b9; }
+    .settings-section-label { font: 500 10px 'DM Sans', sans-serif; letter-spacing: 0.7px; text-transform: uppercase; color: var(--text-muted); margin-top: 14px; margin-bottom: 4px; padding: 0 2px;}
+    .settings-section-label:first-child { margin-top: 0; }
     .toast-wrap { position: fixed; top:12px; left:50%; transform: translateX(-50%); z-index:2400; display:grid; gap:8px; }
     .toast { min-width:220px; max-width:520px; padding:10px 14px; border-radius:10px; border:1px solid var(--border); background: var(--surface); color: var(--text); font:500 12px 'DM Sans', sans-serif; box-shadow:0 10px 28px rgba(0,0,0,.12); animation: toast-in .22s ease forwards; }
     .toast.info { border-color: var(--green-muted); }

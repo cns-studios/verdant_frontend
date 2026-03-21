@@ -1,0 +1,334 @@
+const translations = {
+  en: {
+    "onboarding.title": "Connect your inbox",
+    "onboarding.subtitle": "Choose a mail provider to get started. Your credentials stay on your device.",
+    "onboarding.provider.gmail.label": "Gmail",
+    "onboarding.provider.gmail.desc": "Sign in with Google OAuth — no password stored",
+    "onboarding.provider.outlook.label": "Outlook",
+    "onboarding.provider.outlook.desc": "Connect your Microsoft or Outlook.com account",
+    "onboarding.provider.gmx.label": "GMX",
+    "onboarding.provider.gmx.desc": "Connect via SMTP with your GMX credentials",
+    "onboarding.provider.smtp.label": "Custom SMTP",
+    "onboarding.provider.smtp.desc": "Enter your own SMTP server details",
+    "onboarding.provider.coming_soon": "Coming soon",
+    "onboarding.connecting": "Connecting...",
+    "onboarding.language.label": "Language",
+
+    "sidebar.mailboxes": "Mailboxes",
+    "sidebar.inbox": "Inbox",
+    "sidebar.starred": "Starred",
+    "sidebar.archive": "Archive",
+    "sidebar.sent": "Sent",
+    "sidebar.drafts": "Drafts",
+    "sidebar.compose": "Compose",
+
+    "list.filter.important": "Important",
+    "list.filter.all": "All",
+    "list.filter.unread": "Unread",
+    "list.filter.attachments": "Attachments",
+    "list.search.placeholder": "Search mail…",
+    "list.search.deep": "Deep Search",
+    "list.search.searching": "Searching...",
+    "list.count": "{n} messages",
+    "list.loading_more": "Loading more emails...",
+    "list.no_more": "No more emails",
+
+    "reading.archive": "Archive",
+    "reading.delete": "Delete",
+    "reading.mark_unread": "Mark unread",
+    "reading.star": "Star",
+    "reading.more": "More",
+    "reading.close": "Close pane",
+    "reading.mark_read": "Mark as Read",
+    "reading.toggle_star": "Toggle Star",
+    "reading.edit_draft": "Edit Draft",
+    "reading.send_draft": "Send Draft",
+
+    "compose.title": "New Message",
+    "compose.to": "To",
+    "compose.cc": "Cc",
+    "compose.subject": "Re",
+    "compose.placeholder": "Write your message…",
+    "compose.send": "Send",
+    "compose.save_draft": "Save Draft",
+    "compose.recipient_placeholder": "recipient@example.com",
+    "compose.cc_placeholder": "Add cc…",
+    "compose.subject_placeholder": "Subject",
+
+    "toast.sending": "Sending mail...",
+    "toast.sent": "Email sent",
+    "toast.draft_saving": "Saving draft...",
+    "toast.draft_saved": "Draft saved",
+    "toast.archived": "Email archived",
+    "toast.trashed": "Email moved to trash",
+    "toast.star_updated": "Star status updated",
+    "toast.read_marked": "Marked as read",
+    "toast.unread_marked": "Marked as unread",
+    "toast.fetching": "Fetching mails...",
+    "toast.sync_complete": "Sync complete",
+    "toast.db_cleared": "Local database cleared",
+    "toast.shortcuts_saved": "Shortcuts saved",
+    "toast.no_update": "You are on the latest version",
+    "toast.update_available": "{channel} update v{version} available",
+    "toast.update_downloaded": "Update downloaded: {file}",
+    "toast.recipient_required": "Recipient is required",
+    "toast.draft_no_id": "No draft id found",
+    "toast.draft_sent": "Draft sent",
+    "toast.attachment_unavailable": "Attachment is unavailable",
+    "toast.attachment_failed": "Could not download attachment",
+
+    "settings.title": "Settings",
+    "settings.tab.account": "Account",
+    "settings.tab.shortcuts": "Shortcuts",
+    "settings.tab.app": "App",
+    "settings.account.name": "Name",
+    "settings.account.email": "Email",
+    "settings.account.initials": "Initials",
+    "settings.account.gmail_status": "Gmail Status",
+    "settings.account.gmail_connected": "Connected",
+    "settings.account.gmail_disconnected": "Disconnected",
+    "settings.account.inbox": "Inbox",
+    "settings.account.inbox_value": "{unread} unread / {total} total",
+    "settings.account.last_sync": "Last Inbox Sync",
+    "settings.account.not_synced": "Not synced in this session",
+    "settings.account.logout": "Logout",
+    "settings.shortcuts.enabled": "Enable keyboard shortcuts",
+    "settings.shortcuts.compose": "Compose",
+    "settings.shortcuts.maximize": "Compose Maximize",
+    "settings.shortcuts.refresh": "Refresh",
+    "settings.shortcuts.settings": "Settings",
+    "settings.shortcuts.search": "Search",
+    "settings.shortcuts.save": "Save Shortcuts",
+    "settings.app.installed_version": "Installed Version",
+    "settings.app.update_status": "Update Status",
+    "settings.app.update_channel": "Update Channel",
+    "settings.app.channel.stable": "Stable",
+    "settings.app.channel.nightly": "Nightly (beta)",
+    "settings.app.auto_check": "Check for updates on startup",
+    "settings.app.auto_download": "Download updates automatically",
+    "settings.app.cache_info": "Verdant keeps a local mail cache to make loading faster. Clearing only removes cached messages on this device — your Gmail account is not affected.",
+    "settings.app.check_update": "Check for Updates",
+    "settings.app.download_update": "Download Update",
+    "settings.app.sync_now": "Sync Now",
+    "settings.app.clear_db": "Clear Local Cache",
+    "settings.app.update_not_checked": "Not checked yet",
+    "settings.app.up_to_date": "Up to date on {channel} (v{version})",
+    "settings.app.update_available_status": "{channel} update available: v{version}",
+    "settings.app.checking": "Checking for updates...",
+    "settings.app.check_failed": "Update check failed",
+    "settings.app.downloading": "Downloading update...",
+    "settings.app.download_failed": "Download failed",
+    "settings.app.channel_set": "Channel set to {channel}",
+    "settings.language": "Language",
+
+    "update.title": "Update available — v{version}",
+    "update.later": "Later",
+    "update.download": "Download",
+    "update.downloading": "Downloading update...",
+    "update.installing": "Installing...",
+    "update.restarting": "Restarting...",
+    "update.failed": "Update failed: {error}",
+
+    "app.config_required": "Configuration Required",
+    "app.config_missing": "Missing GOOGLE_CLIENT_ID in .env. Add credentials and restart Verdant.",
+    "app.init_failed": "Initialization Failed",
+    "app.retry": "Retry",
+    "app.no_subject": "(No Subject)",
+    "app.unknown_sender": "Unknown Sender",
+    "app.unknown_date": "Unknown Date",
+    "app.attachment_downloading": "Downloading {name}...",
+    "app.attachment_downloaded": "Downloaded {name}",
+    "app.version_loading": "Loading...",
+    "app.version_unknown": "Unknown",
+  },
+
+  de: {
+    "onboarding.title": "Posteingang verbinden",
+    "onboarding.subtitle": "Wähle einen Mail-Anbieter. Deine Zugangsdaten bleiben auf deinem Gerät.",
+    "onboarding.provider.gmail.label": "Gmail",
+    "onboarding.provider.gmail.desc": "Mit Google OAuth anmelden — kein Passwort gespeichert",
+    "onboarding.provider.outlook.label": "Outlook",
+    "onboarding.provider.outlook.desc": "Microsoft- oder Outlook.com-Konto verbinden",
+    "onboarding.provider.gmx.label": "GMX",
+    "onboarding.provider.gmx.desc": "Über SMTP mit GMX-Zugangsdaten verbinden",
+    "onboarding.provider.smtp.label": "Eigener SMTP",
+    "onboarding.provider.smtp.desc": "Eigene SMTP-Serverdaten eingeben",
+    "onboarding.provider.coming_soon": "Demnächst",
+    "onboarding.connecting": "Verbinde...",
+    "onboarding.language.label": "Sprache",
+
+    "sidebar.mailboxes": "Postfächer",
+    "sidebar.inbox": "Posteingang",
+    "sidebar.starred": "Markiert",
+    "sidebar.archive": "Archiv",
+    "sidebar.sent": "Gesendet",
+    "sidebar.drafts": "Entwürfe",
+    "sidebar.compose": "Verfassen",
+
+    "list.filter.important": "Wichtig",
+    "list.filter.all": "Alle",
+    "list.filter.unread": "Ungelesen",
+    "list.filter.attachments": "Anhänge",
+    "list.search.placeholder": "Mails durchsuchen…",
+    "list.search.deep": "Tiefensuche",
+    "list.search.searching": "Suche...",
+    "list.count": "{n} Nachrichten",
+    "list.loading_more": "Weitere E-Mails laden...",
+    "list.no_more": "Keine weiteren E-Mails",
+
+    "reading.archive": "Archivieren",
+    "reading.delete": "Löschen",
+    "reading.mark_unread": "Als ungelesen markieren",
+    "reading.star": "Markieren",
+    "reading.more": "Mehr",
+    "reading.close": "Bereich schließen",
+    "reading.mark_read": "Als gelesen markieren",
+    "reading.toggle_star": "Markierung umschalten",
+    "reading.edit_draft": "Entwurf bearbeiten",
+    "reading.send_draft": "Entwurf senden",
+
+    "compose.title": "Neue Nachricht",
+    "compose.to": "An",
+    "compose.cc": "Cc",
+    "compose.subject": "Betr.",
+    "compose.placeholder": "Nachricht verfassen…",
+    "compose.send": "Senden",
+    "compose.save_draft": "Als Entwurf speichern",
+    "compose.recipient_placeholder": "empfaenger@beispiel.de",
+    "compose.cc_placeholder": "Cc hinzufügen…",
+    "compose.subject_placeholder": "Betreff",
+
+    "toast.sending": "E-Mail wird gesendet...",
+    "toast.sent": "E-Mail gesendet",
+    "toast.draft_saving": "Entwurf wird gespeichert...",
+    "toast.draft_saved": "Entwurf gespeichert",
+    "toast.archived": "E-Mail archiviert",
+    "toast.trashed": "E-Mail in den Papierkorb verschoben",
+    "toast.star_updated": "Markierungsstatus aktualisiert",
+    "toast.read_marked": "Als gelesen markiert",
+    "toast.unread_marked": "Als ungelesen markiert",
+    "toast.fetching": "Mails werden abgerufen...",
+    "toast.sync_complete": "Synchronisierung abgeschlossen",
+    "toast.db_cleared": "Lokale Datenbank geleert",
+    "toast.shortcuts_saved": "Tastenkürzel gespeichert",
+    "toast.no_update": "Du verwendest die neueste Version",
+    "toast.update_available": "{channel}-Update v{version} verfügbar",
+    "toast.update_downloaded": "Update heruntergeladen: {file}",
+    "toast.recipient_required": "Empfänger ist erforderlich",
+    "toast.draft_no_id": "Keine Entwurfs-ID gefunden",
+    "toast.draft_sent": "Entwurf gesendet",
+    "toast.attachment_unavailable": "Anhang nicht verfügbar",
+    "toast.attachment_failed": "Anhang konnte nicht heruntergeladen werden",
+
+    "settings.title": "Einstellungen",
+    "settings.tab.account": "Konto",
+    "settings.tab.shortcuts": "Tastenkürzel",
+    "settings.tab.app": "App",
+    "settings.account.name": "Name",
+    "settings.account.email": "E-Mail",
+    "settings.account.initials": "Initialen",
+    "settings.account.gmail_status": "Gmail-Status",
+    "settings.account.gmail_connected": "Verbunden",
+    "settings.account.gmail_disconnected": "Getrennt",
+    "settings.account.inbox": "Posteingang",
+    "settings.account.inbox_value": "{unread} ungelesen / {total} gesamt",
+    "settings.account.last_sync": "Letzte Synchronisierung",
+    "settings.account.not_synced": "In dieser Sitzung nicht synchronisiert",
+    "settings.account.logout": "Abmelden",
+    "settings.shortcuts.enabled": "Tastenkürzel aktivieren",
+    "settings.shortcuts.compose": "Verfassen",
+    "settings.shortcuts.maximize": "Verfassen maximieren",
+    "settings.shortcuts.refresh": "Aktualisieren",
+    "settings.shortcuts.settings": "Einstellungen",
+    "settings.shortcuts.search": "Suche",
+    "settings.shortcuts.save": "Tastenkürzel speichern",
+    "settings.app.installed_version": "Installierte Version",
+    "settings.app.update_status": "Update-Status",
+    "settings.app.update_channel": "Update-Kanal",
+    "settings.app.channel.stable": "Stabil",
+    "settings.app.channel.nightly": "Nightly (Beta)",
+    "settings.app.auto_check": "Beim Start auf Updates prüfen",
+    "settings.app.auto_download": "Updates automatisch herunterladen",
+    "settings.app.cache_info": "Verdant speichert einen lokalen Mail-Cache für schnelleres Laden. Das Leeren entfernt nur gecachte Nachrichten auf diesem Gerät — dein Gmail-Konto bleibt unberührt.",
+    "settings.app.check_update": "Nach Updates suchen",
+    "settings.app.download_update": "Update herunterladen",
+    "settings.app.sync_now": "Jetzt synchronisieren",
+    "settings.app.clear_db": "Lokalen Cache leeren",
+    "settings.app.update_not_checked": "Noch nicht geprüft",
+    "settings.app.up_to_date": "Aktuell auf {channel} (v{version})",
+    "settings.app.update_available_status": "{channel}-Update verfügbar: v{version}",
+    "settings.app.checking": "Suche nach Updates...",
+    "settings.app.check_failed": "Update-Prüfung fehlgeschlagen",
+    "settings.app.downloading": "Update wird heruntergeladen...",
+    "settings.app.download_failed": "Download fehlgeschlagen",
+    "settings.app.channel_set": "Kanal auf {channel} gesetzt",
+    "settings.language": "Sprache",
+
+    "update.title": "Update verfügbar — v{version}",
+    "update.later": "Später",
+    "update.download": "Herunterladen",
+    "update.downloading": "Update wird heruntergeladen...",
+    "update.installing": "Wird installiert...",
+    "update.restarting": "Neustart...",
+    "update.failed": "Update fehlgeschlagen: {error}",
+
+    "app.config_required": "Konfiguration erforderlich",
+    "app.config_missing": "GOOGLE_CLIENT_ID fehlt in .env. Zugangsdaten hinzufügen und Verdant neu starten.",
+    "app.init_failed": "Initialisierung fehlgeschlagen",
+    "app.retry": "Erneut versuchen",
+    "app.no_subject": "(Kein Betreff)",
+    "app.unknown_sender": "Unbekannter Absender",
+    "app.unknown_date": "Unbekanntes Datum",
+    "app.attachment_downloading": "{name} wird heruntergeladen...",
+    "app.attachment_downloaded": "{name} heruntergeladen",
+    "app.version_loading": "Laden...",
+    "app.version_unknown": "Unbekannt",
+  },
+};
+
+const LANG_KEY = "verdant.language";
+const SUPPORTED = ["en", "de"];
+
+let currentLang = "en";
+
+export function initLang() {
+  try {
+    const saved = localStorage.getItem(LANG_KEY);
+    if (saved && SUPPORTED.includes(saved)) {
+      currentLang = saved;
+      return;
+    }
+    const browser = (navigator.language || "en").split("-")[0].toLowerCase();
+    currentLang = SUPPORTED.includes(browser) ? browser : "en";
+  } catch {
+    currentLang = "en";
+  }
+}
+
+export function setLang(lang) {
+  if (!SUPPORTED.includes(lang)) return;
+  currentLang = lang;
+  try { localStorage.setItem(LANG_KEY, lang); } catch {}
+}
+
+export function getLang() {
+  return currentLang;
+}
+
+export function getSupportedLanguages() {
+  return [
+    { code: "en", label: "English" },
+    { code: "de", label: "Deutsch" },
+  ];
+}
+
+
+export function t(key, vars = {}) {
+  const dict = translations[currentLang] || translations.en;
+  const fallback = translations.en;
+  let str = dict[key] ?? fallback[key] ?? key;
+  for (const [k, v] of Object.entries(vars)) {
+    str = str.replaceAll(`{${k}}`, String(v));
+  }
+  return str;
+}

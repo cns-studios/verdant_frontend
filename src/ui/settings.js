@@ -4,6 +4,7 @@ import { escapeHtml } from "../lib/format.js";
 import { showToast } from "../lib/toast.js";
 import { loadHotkeys, saveHotkeys, defaultHotkeys, normalizeCombo } from "../lib/hotkeys.js";
 import { syncMailboxInBackground, lastSynced } from "../lib/sync.js";
+import { t, getLang, setLang, getSupportedLanguages } from "../lib/i18n.js";
 import { getVersion } from "@tauri-apps/api/app";
 
 const UPDATE_PREFS_KEY = "verdant.updatePrefs";
@@ -27,17 +28,16 @@ export function saveUpdatePrefs(next) {
   localStorage.setItem(UPDATE_PREFS_KEY, JSON.stringify(updatePrefs));
 }
 
-function setSettingsUpdateStatus(message, isError = false) {
-  const statusEl = document.getElementById("settings-update-status");
-  if (!statusEl) return;
-  statusEl.textContent = message;
-  statusEl.style.color = isError ? "#8a3b3b" : "";
+function setUpdateStatus(message, isError = false) {
+  const el = document.getElementById("settings-update-status");
+  if (!el) return;
+  el.textContent = message;
+  el.style.color = isError ? "#8a3b3b" : "";
 }
 
-function setSettingsUpdateDownloadButtonEnabled(enabled) {
-  const button = document.getElementById("settings-download-update");
-  if (!button) return;
-  button.disabled = !enabled;
+function setDownloadButtonEnabled(enabled) {
+  const btn = document.getElementById("settings-download-update");
+  if (btn) btn.disabled = !enabled;
 }
 
 export async function checkForAppUpdates(options = {}) {
@@ -50,37 +50,37 @@ export async function checkForAppUpdates(options = {}) {
 
   try {
     const info = await checkForUpdates(channel);
+    const channelLabel = channel === "nightly" ? t("settings.app.channel.nightly") : t("settings.app.channel.stable");
 
     if (updateSettingsUi) {
       if (info.updateAvailable) {
-        const channelLabel = channel === "nightly" ? "Nightly" : "Stable";
-        setSettingsUpdateStatus(`${channelLabel} update available: v${info.latestVersion}`);
+        setUpdateStatus(t("settings.app.update_available_status", { channel: channelLabel, version: info.latestVersion }));
       } else {
-        setSettingsUpdateStatus(`Up to date on ${channel} (v${info.currentVersion})`);
+        setUpdateStatus(t("settings.app.up_to_date", { channel: channelLabel, version: info.currentVersion }));
       }
-      setSettingsUpdateDownloadButtonEnabled(!!info.updateAvailable);
+      setDownloadButtonEnabled(!!info.updateAvailable);
     }
 
     if (!info.updateAvailable) {
-      if (!silent) showToast("You are on the latest version");
+      if (!silent) showToast(t("toast.no_update"));
       return info;
     }
 
-    if (!silent) showToast(`${channel} update v${info.latestVersion} available`);
+    if (!silent) showToast(t("toast.update_available", { channel: channelLabel, version: info.latestVersion }));
 
     if (autoDownload) {
       const downloaded = await downloadLatestUpdate(channel);
-      if (updateSettingsUi) setSettingsUpdateStatus(`Downloaded ${downloaded.fileName}`);
-      showToast(`Update downloaded: ${downloaded.fileName}`);
+      if (updateSettingsUi) setUpdateStatus(t("toast.update_downloaded", { file: downloaded.fileName }));
+      showToast(t("toast.update_downloaded", { file: downloaded.fileName }));
     }
 
     return info;
   } catch (error) {
     if (updateSettingsUi) {
-      setSettingsUpdateStatus("Update check failed", true);
-      setSettingsUpdateDownloadButtonEnabled(false);
+      setUpdateStatus(t("settings.app.check_failed"), true);
+      setDownloadButtonEnabled(false);
     }
-    if (!silent) showToast(`Update check failed: ${String(error)}`, "error");
+    if (!silent) showToast(`${t("settings.app.check_failed")}: ${String(error)}`, "error");
     return null;
   }
 }
@@ -101,7 +101,7 @@ export function isSettingsOpen() {
   return !!document.getElementById("verdant-overlay");
 }
 
-function showOverlay(title, message, buttons) {
+export function showOverlay(title, message, buttons) {
   closeOverlay(true);
   const overlay = document.createElement("div");
   overlay.id = "verdant-overlay";
@@ -110,16 +110,14 @@ function showOverlay(title, message, buttons) {
     <div class="verdant-panel">
       <div class="verdant-head">
         <h2>${escapeHtml(title)}</h2>
-        <button class="verdant-close" aria-label="Close">x</button>
+        <button class="verdant-close" aria-label="Close">×</button>
       </div>
       <p>${escapeHtml(message)}</p>
       <div class="verdant-actions"></div>
     </div>
   `;
-
   overlay.querySelector(".verdant-close")?.addEventListener("click", () => closeOverlay());
-  overlay.addEventListener("click", (event) => { if (event.target === overlay) closeOverlay(); });
-
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeOverlay(); });
   const actions = overlay.querySelector(".verdant-actions");
   for (const btn of buttons) {
     const el = document.createElement("button");
@@ -128,7 +126,6 @@ function showOverlay(title, message, buttons) {
     el.onclick = btn.onClick;
     actions.appendChild(el);
   }
-
   document.body.appendChild(overlay);
   requestAnimationFrame(() => overlay.classList.add("open"));
 }
@@ -147,15 +144,16 @@ export async function openSettingsModal(profile, currentMailbox, onLogout, onSyn
 
   try {
     [auth, counts] = await Promise.all([authStatus(), getMailboxCounts()]);
-  } catch (error) {
-    console.warn("Failed to load extended settings details", error);
-  }
+  } catch {}
 
   const lastInboxSync = lastSynced.get("INBOX")
     ? new Date(lastSynced.get("INBOX")).toLocaleString()
-    : "Not synced in this session";
+    : t("settings.account.not_synced");
 
-  showOverlay("Settings", `Signed in as ${profile.email}`, []);
+  const langs = getSupportedLanguages();
+  const currentLang = getLang();
+
+  showOverlay(t("settings.title"), `${t("settings.account.email")}: ${profile.email}`, []);
   const panel = document.querySelector("#verdant-overlay .verdant-panel");
   if (!panel) return;
 
@@ -163,72 +161,109 @@ export async function openSettingsModal(profile, currentMailbox, onLogout, onSyn
   grid.className = "settings-grid";
   grid.innerHTML = `
     <div class="settings-tabs">
-      <button class="settings-tab active" data-tab="account">Account</button>
-      <button class="settings-tab" data-tab="shortcuts">Shortcuts</button>
-      <button class="settings-tab" data-tab="app">App</button>
+      <button class="settings-tab active" data-tab="account">${escapeHtml(t("settings.tab.account"))}</button>
+      <button class="settings-tab" data-tab="shortcuts">${escapeHtml(t("settings.tab.shortcuts"))}</button>
+      <button class="settings-tab" data-tab="app">${escapeHtml(t("settings.tab.app"))}</button>
     </div>
 
+    <!-- Account tab -->
     <section class="settings-pane active" data-pane="account">
       <div class="settings-card">
-        <div class="settings-info-row"><span>Name</span><strong>${escapeHtml(profile.name || "User")}</strong></div>
-        <div class="settings-info-row"><span>Email</span><strong>${escapeHtml(profile.email || "-")}</strong></div>
-        <div class="settings-info-row"><span>Initials</span><strong>${escapeHtml(profile.initials || "U")}</strong></div>
-        <div class="settings-info-row"><span>Gmail Status</span><strong>${auth.connected ? "Connected" : "Disconnected"}</strong></div>
-        <div class="settings-info-row"><span>Inbox</span><strong>${counts.inbox_unread} unread / ${counts.inbox_total} total</strong></div>
-        <div class="settings-info-row"><span>Last Inbox Sync</span><strong>${escapeHtml(lastInboxSync)}</strong></div>
+        <div class="settings-info-row"><span>${escapeHtml(t("settings.account.name"))}</span><strong>${escapeHtml(profile.name || "User")}</strong></div>
+        <div class="settings-info-row"><span>${escapeHtml(t("settings.account.email"))}</span><strong>${escapeHtml(profile.email || "-")}</strong></div>
+        <div class="settings-info-row"><span>${escapeHtml(t("settings.account.gmail_status"))}</span><strong>${auth.connected ? escapeHtml(t("settings.account.gmail_connected")) : escapeHtml(t("settings.account.gmail_disconnected"))}</strong></div>
+        <div class="settings-info-row"><span>${escapeHtml(t("settings.account.inbox"))}</span><strong>${escapeHtml(t("settings.account.inbox_value", { unread: counts.inbox_unread, total: counts.inbox_total }))}</strong></div>
+        <div class="settings-info-row"><span>${escapeHtml(t("settings.account.last_sync"))}</span><strong>${escapeHtml(lastInboxSync)}</strong></div>
+      </div>
+      <div class="settings-section-label">${escapeHtml(t("settings.language"))}</div>
+      <div class="settings-row">
+        <span>${escapeHtml(t("settings.language"))}</span>
+        <select id="settings-lang-select">
+          ${langs.map(l => `<option value="${l.code}" ${l.code === currentLang ? "selected" : ""}>${escapeHtml(l.label)}</option>`).join("")}
+        </select>
       </div>
       <div class="settings-actions">
-        <button class="verdant-btn settings-danger" id="settings-logout">Logout</button>
+        <button class="verdant-btn settings-danger" id="settings-logout">${escapeHtml(t("settings.account.logout"))}</button>
       </div>
     </section>
 
+    <!-- Shortcuts tab -->
     <section class="settings-pane" data-pane="shortcuts">
-      <label class="settings-switch"><input type="checkbox" id="hk-enabled" ${hotkeys.enabled ? "checked" : ""}> Enable keyboard shortcuts</label>
-      <div class="settings-row"><span>Compose</span><input id="hk-compose" value="${escapeHtml(hotkeys.compose)}" /></div>
-      <div class="settings-row"><span>Compose Maximize</span><input id="hk-compose-maximize" value="${escapeHtml(hotkeys.composeMaximize)}" /></div>
-      <div class="settings-row"><span>Refresh</span><input id="hk-refresh" value="${escapeHtml(hotkeys.refresh)}" /></div>
-      <div class="settings-row"><span>Settings</span><input id="hk-settings" value="${escapeHtml(hotkeys.settings)}" /></div>
-      <div class="settings-row"><span>Search</span><input id="hk-search" value="${escapeHtml(hotkeys.search)}" /></div>
+      <label class="settings-switch">
+        <input type="checkbox" id="hk-enabled" ${hotkeys.enabled ? "checked" : ""}>
+        ${escapeHtml(t("settings.shortcuts.enabled"))}
+      </label>
+      <div class="settings-row"><span>${escapeHtml(t("settings.shortcuts.compose"))}</span><input id="hk-compose" value="${escapeHtml(hotkeys.compose)}" /></div>
+      <div class="settings-row"><span>${escapeHtml(t("settings.shortcuts.maximize"))}</span><input id="hk-compose-maximize" value="${escapeHtml(hotkeys.composeMaximize)}" /></div>
+      <div class="settings-row"><span>${escapeHtml(t("settings.shortcuts.refresh"))}</span><input id="hk-refresh" value="${escapeHtml(hotkeys.refresh)}" /></div>
+      <div class="settings-row"><span>${escapeHtml(t("settings.shortcuts.settings"))}</span><input id="hk-settings" value="${escapeHtml(hotkeys.settings)}" /></div>
+      <div class="settings-row"><span>${escapeHtml(t("settings.shortcuts.search"))}</span><input id="hk-search" value="${escapeHtml(hotkeys.search)}" /></div>
       <div class="settings-actions">
-        <button class="verdant-btn" id="settings-save">Save Shortcuts</button>
+        <button class="verdant-btn" id="settings-save">${escapeHtml(t("settings.shortcuts.save"))}</button>
       </div>
     </section>
 
+    <!-- App tab — cleaned up into clear groups -->
     <section class="settings-pane" data-pane="app">
+
+      <div class="settings-section-label">Version</div>
       <div class="settings-card">
-        <div class="settings-info-row"><span>Installed Version</span><strong id="settings-installed-version">Loading...</strong></div>
-        <div class="settings-info-row"><span>Update Status</span><strong id="settings-update-status">Not checked yet</strong></div>
-        <div class="settings-row"><span>Update Channel</span>
+        <div class="settings-info-row">
+          <span>${escapeHtml(t("settings.app.installed_version"))}</span>
+          <strong id="settings-installed-version">${escapeHtml(t("app.version_loading"))}</strong>
+        </div>
+        <div class="settings-info-row">
+          <span>${escapeHtml(t("settings.app.update_status"))}</span>
+          <strong id="settings-update-status">${escapeHtml(t("settings.app.update_not_checked"))}</strong>
+        </div>
+      </div>
+
+      <div class="settings-section-label">${escapeHtml(t("settings.app.update_channel"))}</div>
+      <div class="settings-card">
+        <div class="settings-row">
+          <span>${escapeHtml(t("settings.app.update_channel"))}</span>
           <select id="update-channel">
-            <option value="stable" ${updatePrefs.channel === "stable" ? "selected" : ""}>Stable</option>
-            <option value="nightly" ${updatePrefs.channel === "nightly" ? "selected" : ""}>Nightly (beta)</option>
+            <option value="stable" ${updatePrefs.channel === "stable" ? "selected" : ""}>${escapeHtml(t("settings.app.channel.stable"))}</option>
+            <option value="nightly" ${updatePrefs.channel === "nightly" ? "selected" : ""}>${escapeHtml(t("settings.app.channel.nightly"))}</option>
           </select>
         </div>
-        <label class="settings-switch"><input type="checkbox" id="update-auto-check" ${updatePrefs.autoCheck ? "checked" : ""}> Automatically check for updates at startup</label>
-        <label class="settings-switch"><input type="checkbox" id="update-auto-download" ${updatePrefs.autoDownload ? "checked" : ""}> Automatically download update when available</label>
-        <div class="settings-help">
-          Verdant keeps a local mail cache database on your device to make loading and searching faster.
-          Clearing the local DB only removes cached messages on this device. Your Gmail account and server-side messages are not deleted.
-        </div>
+        <label class="settings-switch">
+          <input type="checkbox" id="update-auto-check" ${updatePrefs.autoCheck ? "checked" : ""}>
+          ${escapeHtml(t("settings.app.auto_check"))}
+        </label>
+        <label class="settings-switch">
+          <input type="checkbox" id="update-auto-download" ${updatePrefs.autoDownload ? "checked" : ""}>
+          ${escapeHtml(t("settings.app.auto_download"))}
+        </label>
       </div>
       <div class="settings-actions">
-        <button class="verdant-btn" id="settings-check-update">Check for Updates</button>
-        <button class="verdant-btn" id="settings-download-update" disabled>Download Latest Update</button>
-        <button class="verdant-btn" id="settings-sync">Sync Emails Now</button>
-        <button class="verdant-btn" id="settings-clear">Clear Local DB</button>
+        <button class="verdant-btn" id="settings-check-update">${escapeHtml(t("settings.app.check_update"))}</button>
+        <button class="verdant-btn" id="settings-download-update" disabled>${escapeHtml(t("settings.app.download_update"))}</button>
       </div>
+
+      <div class="settings-section-label">${escapeHtml(t("settings.tab.account"))}</div>
+      <div class="settings-card">
+        <div class="settings-help">${escapeHtml(t("settings.app.cache_info"))}</div>
+      </div>
+      <div class="settings-actions">
+        <button class="verdant-btn" id="settings-sync">${escapeHtml(t("settings.app.sync_now"))}</button>
+        <button class="verdant-btn" id="settings-clear">${escapeHtml(t("settings.app.clear_db"))}</button>
+      </div>
+
     </section>
   `;
   panel.appendChild(grid);
 
-  getVersion().then((version) => {
+  // Load version
+  getVersion().then((v) => {
     const el = panel.querySelector("#settings-installed-version");
-    if (el) el.textContent = `v${version}`;
+    if (el) el.textContent = `v${v}`;
   }).catch(() => {
     const el = panel.querySelector("#settings-installed-version");
-    if (el) el.textContent = "Unknown";
+    if (el) el.textContent = t("app.version_unknown");
   });
 
+  // Tab switching
   const tabs = Array.from(panel.querySelectorAll(".settings-tab"));
   const panes = Array.from(panel.querySelectorAll(".settings-pane"));
   tabs.forEach((tab) => {
@@ -239,6 +274,15 @@ export async function openSettingsModal(profile, currentMailbox, onLogout, onSyn
     });
   });
 
+  // Language
+  panel.querySelector("#settings-lang-select")?.addEventListener("change", (e) => {
+    setLang(e.target.value);
+    // Re-open settings with new language
+    closeOverlay();
+    openSettingsModal(profile, currentMailbox, onLogout, onSync);
+  });
+
+  // Shortcuts
   panel.querySelector("#settings-save")?.addEventListener("click", () => {
     hotkeys = {
       enabled: !!panel.querySelector("#hk-enabled")?.checked,
@@ -250,54 +294,56 @@ export async function openSettingsModal(profile, currentMailbox, onLogout, onSyn
       close: "escape",
     };
     saveHotkeys(hotkeys);
-    showToast("Shortcuts saved");
+    showToast(t("toast.shortcuts_saved"));
   });
 
-  panel.querySelector("#update-auto-check")?.addEventListener("change", (event) => {
-    saveUpdatePrefs({ ...updatePrefs, autoCheck: !!event.target?.checked });
-  });
-
-  panel.querySelector("#update-channel")?.addEventListener("change", (event) => {
-    const value = event.target?.value === "nightly" ? "nightly" : "stable";
+  // Update channel
+  panel.querySelector("#update-channel")?.addEventListener("change", (e) => {
+    const value = e.target?.value === "nightly" ? "nightly" : "stable";
     saveUpdatePrefs({ ...updatePrefs, channel: value });
-    setSettingsUpdateStatus(`Channel set to ${value}`);
-    setSettingsUpdateDownloadButtonEnabled(false);
+    const label = value === "nightly" ? t("settings.app.channel.nightly") : t("settings.app.channel.stable");
+    setUpdateStatus(t("settings.app.channel_set", { channel: label }));
+    setDownloadButtonEnabled(false);
   });
 
-  panel.querySelector("#update-auto-download")?.addEventListener("change", (event) => {
-    saveUpdatePrefs({ ...updatePrefs, autoDownload: !!event.target?.checked });
+  panel.querySelector("#update-auto-check")?.addEventListener("change", (e) => {
+    saveUpdatePrefs({ ...updatePrefs, autoCheck: !!e.target?.checked });
+  });
+
+  panel.querySelector("#update-auto-download")?.addEventListener("change", (e) => {
+    saveUpdatePrefs({ ...updatePrefs, autoDownload: !!e.target?.checked });
   });
 
   panel.querySelector("#settings-check-update")?.addEventListener("click", async () => {
-    setSettingsUpdateStatus("Checking for updates...");
+    setUpdateStatus(t("settings.app.checking"));
     await checkForAppUpdates({ silent: false, autoDownload: false, updateSettingsUi: true, channel: updatePrefs.channel });
   });
 
   panel.querySelector("#settings-download-update")?.addEventListener("click", async () => {
-    setSettingsUpdateStatus("Checking release assets...");
+    setUpdateStatus(t("settings.app.checking"));
     const info = await checkForAppUpdates({ silent: true, autoDownload: false, updateSettingsUi: true, channel: updatePrefs.channel });
-    if (!info?.updateAvailable) { showToast("No update available"); return; }
-    setSettingsUpdateStatus("Downloading update package...");
+    if (!info?.updateAvailable) { showToast(t("toast.no_update")); return; }
+    setUpdateStatus(t("settings.app.downloading"));
     try {
       const downloaded = await downloadLatestUpdate(updatePrefs.channel);
-      setSettingsUpdateStatus(`Downloaded ${downloaded.fileName}`);
-      showToast(`Update downloaded: ${downloaded.fileName}`);
+      setUpdateStatus(t("toast.update_downloaded", { file: downloaded.fileName }));
+      showToast(t("toast.update_downloaded", { file: downloaded.fileName }));
     } catch (error) {
-      setSettingsUpdateStatus("Update download failed", true);
-      showToast(`Update download failed: ${String(error)}`, "error");
+      setUpdateStatus(t("settings.app.download_failed"), true);
+      showToast(`${t("settings.app.download_failed")}: ${String(error)}`, "error");
     }
   });
 
   panel.querySelector("#settings-sync")?.addEventListener("click", async () => {
-    showToast("Fetching mails...");
+    showToast(t("toast.fetching"));
     await onSync();
-    showToast("Sync complete");
+    showToast(t("toast.sync_complete"));
   });
 
   panel.querySelector("#settings-clear")?.addEventListener("click", async () => {
     await clearLocalData();
     closeOverlay();
-    showToast("Local database cleared");
+    showToast(t("toast.db_cleared"));
     await onSync();
   });
 
