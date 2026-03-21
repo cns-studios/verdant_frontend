@@ -65,9 +65,9 @@ jobs:
         run: |
           set -eux
           VERSION=$(node -p "JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json','utf8')).version")
-          APPIMAGE=$(ls src-tauri/target/release/bundle/appimage/*.AppImage | head -n 1)
+          BINARY=$(ls src-tauri/target/release/Verdant-Desktop)
           mkdir -p out/archpkg
-          cp "$APPIMAGE" out/archpkg/verdant.AppImage
+          cp "$BINARY" out/archpkg/verdant
 
           cat > out/archpkg/PKGBUILD << EOF
           pkgname=verdant-desktop-bin
@@ -79,15 +79,12 @@ jobs:
           license=('custom')
           depends=('gtk3' 'webkit2gtk-4.1' 'libayatana-appindicator')
           options=('!debug' '!strip')
-          source=('verdant.AppImage')
+          source=('verdant')
           sha256sums=('SKIP')
 
           package() {
-            install -Dm755 "\$srcdir/verdant.AppImage" "\$pkgdir/opt/verdant/verdant.AppImage"
-            install -d "\$pkgdir/usr/bin"
+            install -Dm755 "\$srcdir/verdant" "\$pkgdir/usr/bin/verdant"
             install -d "\$pkgdir/usr/share/applications"
-            printf '%s\n' '#!/bin/sh' 'exec /opt/verdant/verdant.AppImage "\$@"' > "\$pkgdir/usr/bin/verdant"
-            chmod 755 "\$pkgdir/usr/bin/verdant"
             cat > "\$pkgdir/usr/share/applications/verdant.desktop" << DESKTOP
           [Desktop Entry]
           Type=Application
@@ -118,7 +115,7 @@ jobs:
 
       - name: Check Binary Type
         run: file src-tauri/target/release/Verdant-Desktop
-        
+
       - name: Collect Linux Artifacts
         run: |
           mkdir -p out/linux
