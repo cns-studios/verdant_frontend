@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'src-tauri/**'
+      - 'src/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
 
 concurrency:
   group: nightly-main-${{ github.ref }}
@@ -30,10 +36,12 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust Build Artifacts
+      - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: src-tauri -> target
+          cache-on-failure: true
+          prefix-key: linux-rust
 
       - name: Install Linux Build Dependencies
         run: |
@@ -53,56 +61,12 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
         run: npm run tauri build -- --bundles deb,rpm,appimage
 
-      - name: Build Arch Linux Package
-        run: |
-          set -eux
-          VERSION=$(node -p "JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json','utf8')).version")
-          mkdir -p out/archpkg
-          APPIMAGE=$(ls src-tauri/target/release/bundle/appimage/*.AppImage | head -n 1)
-          cp "$APPIMAGE" out/archpkg/verdant_frontend.AppImage
-
-          cat > out/archpkg/PKGBUILD <<'PKGEOF'
-          pkgname=verdant-frontend-bin
-          pkgver=__VERSION__
-          pkgrel=1
-          pkgdesc="Verdant desktop mail client"
-          arch=('x86_64')
-          url="https://github.com/cns-studios/verdant_frontend"
-          license=('custom')
-          depends=('gtk3' 'webkit2gtk-4.1')
-          source=('verdant_frontend.AppImage')
-          sha256sums=('SKIP')
-
-          package() {
-            install -Dm755 "$srcdir/verdant_frontend.AppImage" "$pkgdir/opt/verdant/verdant_frontend.AppImage"
-
-            install -d "$pkgdir/usr/bin"
-            install -d "$pkgdir/usr/share/applications"
-
-            printf '%s\n' '#!/bin/sh' 'exec /opt/verdant/verdant_frontend.AppImage "$@"' > "$pkgdir/usr/bin/verdant-frontend"
-            chmod 755 "$pkgdir/usr/bin/verdant-frontend"
-
-            printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Verdant' 'Exec=verdant-frontend' 'Terminal=false' 'Categories=Network;Email;' > "$pkgdir/usr/share/applications/verdant-frontend.desktop"
-          }
-          PKGEOF
-
-          sed -i "s/__VERSION__/${VERSION}/g" out/archpkg/PKGBUILD
-
-          docker run --rm -v "$PWD/out/archpkg:/work" archlinux:latest bash -lc '
-            set -eux
-            pacman -Sy --noconfirm --needed base-devel
-            useradd -m builder
-            chown -R builder:builder /work
-            su builder -c "cd /work && makepkg -f --nodeps --noconfirm"
-          '
-
       - name: Collect Linux Artifacts
         run: |
           mkdir -p out/linux
           cp src-tauri/target/release/bundle/deb/*.deb out/linux/ || true
           cp src-tauri/target/release/bundle/rpm/*.rpm out/linux/ || true
           cp src-tauri/target/release/bundle/appimage/*.AppImage out/linux/ || true
-          cp out/archpkg/*.pkg.tar.zst out/linux/ || true
 
       - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
@@ -128,10 +92,12 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust Build Artifacts
+      - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: src-tauri -> target
+          cache-on-failure: true
+          prefix-key: windows-rust
 
       - name: Install Frontend Dependencies
         run: npm ci
@@ -191,7 +157,6 @@ jobs:
             release-assets/*.deb
             release-assets/*.rpm
             release-assets/*.AppImage
-            release-assets/*.pkg.tar.zst
             release-assets/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
