@@ -131,39 +131,37 @@ fn version_is_newer(current: &str, latest: &str) -> bool {
 fn preferred_asset_score(name: &str) -> i32 {
     let lower = name.to_ascii_lowercase();
     if cfg!(target_os = "windows") {
-        if lower.ends_with(".msi") {
-            return 100;
-        }
-        if lower.ends_with(".exe") {
-            return 90;
-        }
-        if lower.contains("nsis") {
-            return 80;
-        }
+        if lower.ends_with(".msi") { return 100; }
+        if lower.ends_with(".exe") { return 90; }
+        if lower.contains("nsis") { return 80; }
     }
 
     if cfg!(target_os = "linux") {
-        if lower.ends_with(".appimage") {
-            return 100;
-        }
-        if lower.ends_with(".deb") {
-            return 85;
-        }
-        if lower.ends_with(".rpm") {
-            return 80;
-        }
-        if lower.contains("arch") || lower.ends_with(".pkg.tar.zst") {
-            return 75;
-        }
+        let has_pacman = std::process::Command::new("which")
+            .arg("pacman")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        let has_dpkg = std::process::Command::new("which")
+            .arg("dpkg")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        let has_rpm = std::process::Command::new("which")
+            .arg("rpm")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+        if has_pacman && lower.ends_with(".pacman") { return 100; }
+        if has_dpkg && lower.ends_with(".deb") { return 100; }
+        if has_rpm && lower.ends_with(".rpm") { return 100; }
+        if lower.ends_with(".appimage") { return 50; }
     }
 
     if cfg!(target_os = "macos") {
-        if lower.ends_with(".dmg") {
-            return 100;
-        }
-        if lower.ends_with(".app.tar.gz") {
-            return 90;
-        }
+        if lower.ends_with(".dmg") { return 100; }
+        if lower.ends_with(".app.tar.gz") { return 90; }
     }
 
     1
@@ -382,11 +380,97 @@ async fn download_latest_update(channel: Option<String>) -> Result<UpdateDownloa
     let file_path = folder.join(&info.download_asset_name);
     std::fs::write(&file_path, &bytes).map_err(|e| e.to_string())?;
 
+    let path_str = file_path.to_string_lossy().to_string();
+    let lower = info.download_asset_name.to_ascii_lowercase();
+
+    install_update(&path_str, &lower)?;
+
     Ok(UpdateDownloadResult {
-        file_path: file_path.to_string_lossy().to_string(),
+        file_path: path_str,
         file_name: info.download_asset_name,
         version: info.latest_version,
     })
+}
+
+fn install_update(path: &str, name: &str) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        if name.ends_with(".pacman") || name.ends_with(".pkg.tar.zst") {
+            std::process::Command::new("pkexec")
+                .args(["pacman", "-U", "--noconfirm", path])
+                .status()
+                .map_err(|e| format!("Failed to launch pacman: {}", e))?;
+        } else if name.ends_with(".deb") {
+            let apt = std::process::Command::new("pkexec")
+                .args(["apt-get", "install", "-y", path])
+                .status();
+            if apt.is_err() {
+                std::process::Command::new("pkexec")
+                    .args(["dpkg", "-i", path])
+                    .status()
+                    .map_err(|e| format!("Failed to launch dpkg: {}", e))?;
+            }
+        } else if name.ends_with(".rpm") {
+            let dnf = std::process::Command::new("pkexec")
+                .args(["dnf", "install", "-y", path])
+                .status();
+            if dnf.is_err() {
+                std::process::Command::new("pkexec")
+                    .args(["rpm", "-U", path])
+                    .status()
+                    .map_err(|e| format!("Failed to launch rpm: {}", e))?;
+            }
+        } else if name.ends_with(".appimage") {
+            std::fs::set_permissions(
+                path,
+                std::os::unix::fs::PermissionsExt::from_mode(0o755),
+            )
+            .map_err(|e| e.to_string())?;
+            std::process::Command::new(path)
+                .spawn()
+                .map_err(|e| format!("Failed to launch AppImage: {}", e))?;
+            std::process::exit(0);
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if name.ends_with(".exe") || name.ends_with(".msi") {
+            std::process::Command::new("powershell")
+                .args([
+                    "-Command",
+                    &format!(
+                        "Start-Process -FilePath '{}' -Verb RunAs",
+                        path
+                    ),
+                ])
+                .spawn()
+                .map_err(|e| format!("Failed to launch installer: {}", e))?;
+            std::process::exit(0);
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if name.ends_with(".dmg") {
+            open::that(path).map_err(|e| e.to_string())?;
+            std::process::exit(0);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        std::process::Command::new(current_exe)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        std::process::exit(0);
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
+    open::that(path).map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 fn sanitize_header_value(input: &str) -> String {
