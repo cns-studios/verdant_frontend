@@ -59,6 +59,7 @@ jobs:
       - name: Build Tauri Linux Bundles
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: npm run tauri build -- --bundles deb,rpm,appimage
 
       - name: Build Pacman Package
@@ -160,6 +161,7 @@ jobs:
       - name: Build Tauri Windows Bundle
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: npm run tauri build -- --bundles nsis
 
       - name: Collect Windows Artifacts
