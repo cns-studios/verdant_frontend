@@ -45,26 +45,60 @@ fn connect(creds: &ImapCredentials) -> Result<TlsSession, String> {
     Ok(session)
 }
 
+fn decode_imap_utf7(input: &str) -> String {
+    input
+        .replace("&APw-", "ü")
+        .replace("&APY-", "ö")
+        .replace("&AOQ-", "ä")
+        .replace("&AOU-", "Ö")
+        .replace("&AMD-", "Ä")
+        .replace("&AUQ-", "Ü")
+        .replace("&AQ8-", "ß")
+}
+
 fn imap_folder_for_mailbox(mailbox: &str, folders: &[String]) -> Option<String> {
     let target = mailbox.to_uppercase();
+
     for folder in folders {
-        if folder.to_uppercase() == target {
+        let decoded = decode_imap_utf7(folder);
+        if decoded.to_uppercase() == target {
             return Some(folder.clone());
         }
     }
+
     let candidates: &[&str] = match target.as_str() {
-        "SENT"  => &["SENT", "GESENDET", "SENT ITEMS", "SENT MESSAGES", "[GMAIL]/SENT MAIL"],
-        "DRAFT" => &["DRAFTS", "DRAFT", "ENTW&APW-RFE", "ENTW&APU-RFE", "[GMAIL]/DRAFTS"],
-        "ARCHIVE" => &["ARCHIVE", "ALL MAIL", "Archiv", "[GMAIL]/ALL MAIL"],
+        "SENT" => &[
+            "SENT", "SENT ITEMS", "SENT MESSAGES",
+            "GESENDET", "GESENDETE ELEMENTE",
+            "[GMAIL]/SENT MAIL", "INBOX.SENT",
+        ],
+        "DRAFT" => &[
+            "DRAFTS", "DRAFT", "ENTW\u{00DC}RFE",
+            "[GMAIL]/DRAFTS", "INBOX.DRAFTS",
+        ],
+        "ARCHIVE" => &[
+            "ARCHIVE", "ALL MAIL", "ARCHIV",
+            "[GMAIL]/ALL MAIL", "INBOX.ARCHIVE",
+        ],
         _ => return None,
     };
+
     for candidate in candidates {
         for folder in folders {
-            if folder.to_uppercase() == *candidate {
+            let decoded = decode_imap_utf7(folder);
+            if decoded.to_uppercase() == *candidate {
                 return Some(folder.clone());
             }
         }
     }
+
+    for folder in folders {
+        let decoded = decode_imap_utf7(folder);
+        if decoded.to_uppercase().contains(&target) {
+            return Some(folder.clone());
+        }
+    }
+
     None
 }
 
@@ -147,12 +181,14 @@ pub fn sync_imap_mailbox(
         .iter().map(|n| n.name().to_string()).collect();
 
 
-    let folder = match imap_folder_for_mailbox(mailbox_label, &folders) {
-        Some(f) => f,
-        None => { 
-            let _ = session.logout(); return Ok(vec![]); 
-        }
-    };
+        let folder = match imap_folder_for_mailbox(mailbox_label, &folders) {
+            Some(f) => {
+                f
+            },
+            None => { 
+                let _ = session.logout(); return Ok(vec![]); 
+            }
+        };
 
 
     let mailbox_info = session.select(&folder)
@@ -173,13 +209,17 @@ pub fn sync_imap_mailbox(
         let uid = msg.uid.map(|u| u.to_string())
             .unwrap_or_else(|| msg.message.to_string());
 
+        let body_bytes = msg.body().unwrap_or(b"");
+        let min_size = if mailbox_label == "INBOX" { 500 } else { 50 };
+        if body_bytes.len() < min_size {
+                std::str::from_utf8(&body_bytes[..body_bytes.len().min(200)]).unwrap_or("(invalid utf8)"));
+            continue;
+        }
+
         if !seen_uids.insert(uid.clone()) {
             continue;
         }
 
-        let body_bytes = msg.body().unwrap_or(b"");
-        log::info!("IMAP processing uid={} body_len={}", uid, body_bytes.len());
-        if body_bytes.len() < 500 { continue; }
         let parsed = match parse_mail(body_bytes) { Ok(p) => p, Err(_) => continue };
 
         let headers = parsed.get_headers();
@@ -188,8 +228,8 @@ pub fn sync_imap_mailbox(
         let to_recipients  = headers.get_first_value("To").unwrap_or_default();
         let cc_recipients  = headers.get_first_value("Cc").unwrap_or_default();
         let date           = headers.get_first_value("Date").unwrap_or_default();
-        let message_id     = headers.get_first_value("Message-ID")
-            .unwrap_or_else(|| format!("imap-{}-{}", account.id, uid));
+        let message_id = headers.get_first_value("Message-ID")
+            .unwrap_or_else(|| format!("imap-{}-{}-{}", account.id, mailbox_label, uid));
         let thread_id      = headers.get_first_value("In-Reply-To")
             .unwrap_or_else(|| message_id.clone());
 
@@ -198,7 +238,6 @@ pub fn sync_imap_mailbox(
         let snippet: String = parsed.get_body().unwrap_or_default()
             .chars().take(180).collect::<String>().replace('\n', " ");
         let attachments = collect_imap_attachments(&parsed, &uid);
-        log::info!("IMAP uid={} attachments={:?}", uid, attachments);
         let has_attachments = !attachments.is_empty();
         let attachments_json = serde_json::to_string(&attachments).unwrap_or_else(|_| "[]".to_string());
         let internal_ts = rfc2822_to_epoch(&date);

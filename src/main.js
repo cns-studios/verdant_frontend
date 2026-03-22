@@ -235,6 +235,7 @@ async function loadLocalMailbox(mailbox, animate = false) {
     currentMailbox = mailbox;
 
     if (mailbox === "INBOX") {
+        setListTitle(mailbox, 0);
         const threads = await getInboxThreads();
         ingestContactsFromEmails([]);
         renderThreadList(threads, activeFilter, searchQuery);
@@ -250,7 +251,7 @@ async function loadLocalMailbox(mailbox, animate = false) {
 
 async function openMailbox(mailbox, animate = false) {
     await loadLocalMailbox(mailbox, animate);
-    syncMailboxInBackground(mailbox, false, onSynced).catch((err) => {
+    syncMailboxInBackground(mailbox, true, onSynced).catch((err) => {
         console.error("Background sync failed:", err);
     });
 }
