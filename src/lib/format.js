@@ -1,4 +1,4 @@
-import { getLang } from "./i18n.js";
+import { getLang, t } from "./i18n.js";
 
 export function escapeHtml(input) {
   if (!input) return "";
@@ -30,18 +30,19 @@ export function formatListDate(raw) {
   const d = new Date(cleanedRaw);
   if (Number.isNaN(d.getTime())) return cleanedRaw;
 
+  const lang = getLang();
+  const locale = lang === "de" ? "de-DE" : "en-US";
+
   const now = new Date();
   const dayNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const dayMail = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const diff = Math.round((dayNow - dayMail) / 86400000);
 
-  const locale = getLang() === "de" ? "de-DE" : "en-US";
-
   if (diff === 0) {
     return d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
   }
   if (diff === 1) {
-    return getLang() === "de" ? "Gestern" : "Yesterday";
+    return lang === "de" ? "Gestern" : "Yesterday";
   }
   return d.toLocaleDateString(locale);
 }
@@ -74,11 +75,11 @@ export function formatAttachmentSize(size) {
 
 export function mailboxTitle(mailbox) {
   switch (mailbox) {
-    case "INBOX": return "Inbox";
-    case "STARRED": return "Starred";
-    case "ARCHIVE": return "Archive";
-    case "SENT": return "Sent";
-    case "DRAFT": return "Drafts";
-    default: return "Mailbox";
+    case "INBOX": return t("sidebar.inbox");
+    case "STARRED": return t("sidebar.starred");
+    case "ARCHIVE": return t("sidebar.archive");
+    case "SENT": return t("sidebar.sent");
+    case "DRAFT": return t("sidebar.drafts");
+    default: return t("sidebar.inbox");
   }
 }

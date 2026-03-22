@@ -2,6 +2,7 @@ import { setEmailReadStatus, toggleStarred, archiveEmail, trashEmail } from "../
 import { escapeHtml, sanitizeUnicodeNoise, formatReadingDate, formatAttachmentSize } from "../lib/format.js";
 import { showToast } from "../lib/toast.js";
 import { downloadAttachment } from "../api.js";
+import { t } from "../lib/i18n.js";
 
 function senderInitials(sender) {
   const raw = sanitizeUnicodeNoise(sender || "?").replace(/<.*?>/g, "").trim();
@@ -51,15 +52,15 @@ export function applySenderAvatar(container, sender, mailbox = "") {
   let idx = 0;
 
   img.onload = () => {
-      if (img.naturalWidth <= 16 && img.naturalHeight <= 16) {
-          idx += 1;
-          if (idx < urls.length) { img.src = urls[idx]; return; }
-          return;
-      }
-      container.classList.add("has-image");
-      container.textContent = "";
-      container.innerHTML = "";
-      container.appendChild(img);
+    if (img.naturalWidth <= 16 && img.naturalHeight <= 16) {
+      idx += 1;
+      if (idx < urls.length) { img.src = urls[idx]; return; }
+      return;
+    }
+    container.classList.add("has-image");
+    container.textContent = "";
+    container.innerHTML = "";
+    container.appendChild(img);
   };
 
   img.onerror = () => {
@@ -130,7 +131,7 @@ function showAttachmentDownloadModal(filename) {
   modal.innerHTML = `
     <div class="attachment-download-card" role="dialog" aria-live="polite">
       <div class="attachment-download-icon is-spinning"></div>
-      <div class="attachment-download-text">Downloading ${escapeHtml(filename || "attachment")}...</div>
+      <div class="attachment-download-text">${t("app.attachment_downloading", { name: escapeHtml(filename || "attachment") })}</div>
     </div>
   `;
   document.body.appendChild(modal);
@@ -147,7 +148,7 @@ async function showAttachmentDownloadSuccess(filename) {
     icon.classList.add("is-success");
     icon.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7L10 17l-5-5"/></svg>`;
   }
-  if (text) text.textContent = `Downloaded ${filename || "attachment"}`;
+  if (text) text.textContent = t("app.attachment_downloaded", { name: filename || "attachment" });
   await new Promise((resolve) => setTimeout(resolve, 1500));
 }
 
@@ -160,7 +161,7 @@ function hideAttachmentDownloadModal() {
 
 async function handleAttachmentDownload(emailId, attachment) {
   if (!emailId || !attachment?.attachment_id) {
-    showToast("Attachment is unavailable", "error", 2400);
+    showToast(t("toast.attachment_unavailable"), "error", 2400);
     return;
   }
   showAttachmentDownloadModal(attachment.filename || "attachment");
@@ -199,7 +200,7 @@ function renderReadingAttachments(email) {
   const section = document.createElement("section");
   section.className = "email-attachments";
   section.innerHTML = `
-    <div class="email-attachments-title">Attachments (${attachments.length})</div>
+    <div class="email-attachments-title">${t("thread.attachments_plural", { n: attachments.length })}</div>
     <div class="email-attachment-list">
       ${attachments.map((a, index) => `
         <div class="email-attachment-item">
@@ -207,7 +208,7 @@ function renderReadingAttachments(email) {
             <div class="email-attachment-name" title="${escapeHtml(a.filename || "attachment")}">${escapeHtml(a.filename || "attachment")}</div>
             <div class="email-attachment-sub">${escapeHtml(a.mime_type || "file")} • ${escapeHtml(formatAttachmentSize(a.size))}</div>
           </div>
-          <button class="email-attachment-download" data-attachment-index="${index}">Download</button>
+          <button class="email-attachment-download" data-attachment-index="${index}">${t("thread.download")}</button>
         </div>
       `).join("")}
     </div>
@@ -222,16 +223,15 @@ function renderReadingAttachments(email) {
       const attachment = attachments[Number(button.getAttribute("data-attachment-index"))];
       if (!attachment) return;
       button.disabled = true;
-      const prev = button.textContent;
-      button.textContent = "Downloading...";
+      button.textContent = t("thread.downloading");
       try {
         await handleAttachmentDownload(email.id, attachment);
       } catch (error) {
         console.error("Attachment download failed", error);
-        showToast("Could not download attachment", "error", 2600);
+        showToast(t("toast.attachment_failed"), "error", 2600);
       } finally {
         button.disabled = false;
-        button.textContent = prev;
+        button.textContent = t("thread.download");
       }
     });
   });
@@ -244,8 +244,8 @@ export function renderReadingPane(email) {
   const body = document.querySelector(".email-body-text");
   const avatar = document.querySelector(".meta-avatar");
 
-  if (subject) subject.textContent = sanitizeUnicodeNoise(email.subject || "(No Subject)");
-  if (from) from.textContent = sanitizeUnicodeNoise(email.sender || "Unknown Sender");
+  if (subject) subject.textContent = sanitizeUnicodeNoise(email.subject || t("app.no_subject"));
+  if (from) from.textContent = sanitizeUnicodeNoise(email.sender || t("app.unknown_sender"));
   if (date) date.textContent = formatReadingDate(email.date || "");
   if (body) {
     const html = sanitizeUnicodeNoise(email.body_html || "");
@@ -264,9 +264,9 @@ export function updateTopActionStates(email) {
   const buttons = Array.from(document.querySelectorAll(".reading-actions .icon-btn"));
   buttons.forEach((btn) => {
     const title = btn.getAttribute("title") || "";
-    if (title === "Star") btn.classList.toggle("active", !!email?.starred);
-    if (title === "Delete") btn.classList.add("danger");
-    if (title === "Label") btn.style.display = "none";
+    if (title === t("reading.star")) btn.classList.toggle("active", !!email?.starred);
+    if (title === t("reading.delete")) btn.classList.add("danger");
+    if (title === t("reading.label")) btn.style.display = "none";
   });
 }
 
@@ -274,7 +274,7 @@ export function setReadingPaneHidden(hidden) {
   document.body.classList.toggle("reading-pane-hidden", !!hidden);
 }
 
-export function bindReadingActions(getSelected, setSelected, onRefresh, openCompose) {
+export function bindReadingActions(getSelected, setSelected, onRefresh, openCompose, getCurrentMailbox, getThreadId) {
   const buttons = Array.from(document.querySelectorAll(".reading-actions .icon-btn"));
 
   for (const button of buttons) {
@@ -282,62 +282,102 @@ export function bindReadingActions(getSelected, setSelected, onRefresh, openComp
 
     button.onclick = async () => {
       const email = getSelected();
-      if (!email) return;
 
-      if (title === "Archive") {
-        await archiveEmail(email.id);
-        showToast("Email archived");
+      if (title === t("reading.archive")) {
+        if (email) {
+          await archiveEmail(email.id);
+        }
+        showToast(t("toast.archived"));
         await onRefresh();
         return;
       }
 
-      if (title === "Delete") {
-        await trashEmail(email.id);
-        showToast("Email moved to trash");
+      if (title === t("reading.delete")) {
+        if (email) {
+          await trashEmail(email.id);
+        }
+        showToast(t("toast.trashed"));
         await onRefresh();
         return;
       }
 
-      if (title === "Mark unread") {
-        const nextRead = !email.is_read;
-        await setEmailReadStatus(email.id, nextRead);
-        email.is_read = nextRead;
-        showToast(nextRead ? "Marked as read" : "Marked as unread");
-        await onRefresh();
+      if (title === t("reading.mark_unread")) {
+        if (email) {
+          const nextRead = !email.is_read;
+          await setEmailReadStatus(email.id, nextRead);
+          email.is_read = nextRead;
+          showToast(nextRead ? t("toast.read_marked") : t("toast.unread_marked"));
+          await onRefresh();
+        }
         return;
       }
 
-      if (title === "Star") {
-        await toggleStarred(email.id);
-        email.starred = !email.starred;
-        showToast("Star status updated");
-        updateTopActionStates(email);
-        await onRefresh();
+      if (title === t("reading.star")) {
+        if (email) {
+          await toggleStarred(email.id);
+          email.starred = !email.starred;
+          showToast(t("toast.star_updated"));
+          updateTopActionStates(email);
+          await onRefresh();
+        }
         return;
       }
 
-      if (title === "More") {
-        buildActionMenu([
-          { label: "Mark as Read", onClick: () => setEmailReadStatus(email.id, true) },
-          { label: "Mark as Unread", onClick: () => setEmailReadStatus(email.id, false) },
-          { label: "Toggle Star", onClick: () => toggleStarred(email.id) },
-          ...(email.mailbox === "DRAFT" ? [
-            { label: "Edit Draft", onClick: async () => openCompose(email) },
+      if (title === t("reading.more")) {
+        const mailbox = getCurrentMailbox?.() || "INBOX";
+        const isDraft = email?.mailbox === "DRAFT";
+
+        const entries = [
+          {
+            label: t("reading.mark_read"),
+            onClick: async () => {
+              if (email) {
+                await setEmailReadStatus(email.id, true);
+              } else {
+                const threadId = getThreadId?.();
+                if (threadId) {
+                  const { markThreadRead } = await import("../api.js");
+                  await markThreadRead(threadId);
+                }
+              }
+            },
+          },
+          {
+            label: t("reading.mark_unread_action"),
+            onClick: async () => {
+              if (email) {
+                await setEmailReadStatus(email.id, false);
+              }
+            },
+          },
+          {
+            label: t("reading.toggle_star"),
+            onClick: async () => {
+              if (email) await toggleStarred(email.id);
+            },
+          },
+          ...(isDraft && email ? [
             {
-              label: "Send Draft",
+              label: t("reading.edit_draft"),
+              onClick: async () => openCompose(email),
+            },
+            {
+              label: t("reading.send_draft"),
               onClick: async () => {
-                if (!email.draft_id) { showToast("No draft id found", "error"); return; }
+                if (!email.draft_id) { showToast(t("toast.draft_no_id"), "error"); return; }
                 const { sendExistingDraft } = await import("../api.js");
                 await sendExistingDraft(email.draft_id);
-                showToast("Draft sent");
+                showToast(t("toast.draft_sent"));
               },
             },
           ] : []),
-        ], button, onRefresh);
+        ];
+
+        buildActionMenu(entries, button, onRefresh);
         return;
       }
 
-      if (title === "Close pane") {
+      if (title === t("reading.close")) {
         setSelected(null);
         document.querySelectorAll(".email-item").forEach((el) => el.classList.remove("active"));
         setReadingPaneHidden(true);

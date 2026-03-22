@@ -1,6 +1,7 @@
 import { syncMailboxPage, getEmails } from "../api.js";
 import { ingestContactsFromEmails } from "./contacts.js";
 import { showToast } from "./toast.js";
+import { t } from "./i18n.js";
 
 const SYNC_INTERVAL_MS = 45000;
 const RESYNC_COOLDOWN_MS = 5 * 60 * 1000;
@@ -21,13 +22,14 @@ export async function notifyNewEmails(nextInbox) {
   knownInboxIds = nextIds;
 
   if (!unseen.length) return;
-  showToast(`New email: ${(unseen[0].subject || "(No Subject)").replace(/[\u00AD\u034F\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, "")}`);
+  const subject = (unseen[0].subject || t("app.no_subject")).replace(/[\u00AD\u034F\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, "");
+  showToast(`${t("toast.new_email")}: ${subject}`);
 
   if (!("Notification" in window)) return;
   if (Notification.permission === "default") await Notification.requestPermission();
   if (Notification.permission === "granted") {
     const first = unseen[0];
-    new Notification("New email", {
+    new Notification(t("toast.new_email"), {
       body: `${first.sender} - ${first.subject}`,
     });
   }
@@ -42,7 +44,7 @@ export async function syncMailboxInBackground(mailbox, force = false, onSynced =
   lastSynced.set(key, now);
 
   if (mailbox !== "STARRED" && mailbox !== "ARCHIVE") {
-    showToast("Fetching mails...", "info", 1200);
+    showToast(t("toast.fetching"), "info", 1200);
     const next = await syncMailboxPage(mailbox, null);
     mailboxNextPageToken.set(mailbox, next || null);
   }

@@ -51,7 +51,7 @@ export function renderThreadList(threads, activeFilter, searchQuery) {
     if (activeFilter === "Important") {
       const labels = (thread.labels || "").split(",");
       const isPromo = labels.some(l =>
-        ["SPAM","TRASH","CATEGORY_PROMOTIONS"].includes(l.trim())
+        ["SPAM", "TRASH", "CATEGORY_PROMOTIONS"].includes(l.trim())
       );
       if (isPromo) return false;
     }
@@ -106,9 +106,6 @@ export function renderThreadList(threads, activeFilter, searchQuery) {
 }
 
 
-
-
-
 async function selectThread(thread, row) {
   selectedThreadId = thread.thread_id;
   selectedThreadMessages = [];
@@ -142,7 +139,6 @@ async function selectThread(thread, row) {
 }
 
 
-
 function renderThreadPane(thread, messages) {
   const subjectEl = document.querySelector(".reading-subject");
   if (subjectEl) subjectEl.textContent = sanitizeUnicodeNoise(thread.subject || t("app.no_subject"));
@@ -162,13 +158,12 @@ function renderThreadPane(thread, messages) {
 
   readingBody.innerHTML = "";
 
-  
   if (messages.length > 1) {
     const participantBar = document.createElement("div");
     participantBar.className = "thread-participant-bar";
     participantBar.innerHTML = `
       <span class="thread-participant-label">${escapeHtml(formatParticipants(thread.participants, 8))}</span>
-      <span class="thread-message-total">${messages.length} messages</span>
+      <span class="thread-message-total">${messages.length} ${t("thread.messages")}</span>
     `;
     readingBody.appendChild(participantBar);
   }
@@ -181,9 +176,6 @@ function renderThreadPane(thread, messages) {
     stack.appendChild(buildMessageBubble(message, messages));
   }
 }
-
-
-
 
 
 function buildMessageBubble(message, allMessages) {
@@ -232,13 +224,17 @@ function buildCollapsedBubble(message, senderName) {
 
 function buildExpandedBubble(message, senderName) {
   const attachments = parseAttachments(message);
+  const attachLabel = attachments.length === 1
+    ? t("thread.attachments", { n: 1 })
+    : t("thread.attachments_plural", { n: attachments.length });
+
   const attachmentsHtml = attachments.length ? `
     <div class="thread-bubble-attachments">
-      <div class="thread-attachments-label">${attachments.length} attachment${attachments.length > 1 ? "s" : ""}</div>
+      <div class="thread-attachments-label">${escapeHtml(attachLabel)}</div>
       ${attachments.map((a, i) => `
         <div class="thread-attachment-item">
           <span class="thread-attachment-name" title="${escapeHtml(a.filename || "attachment")}">${escapeHtml(a.filename || "attachment")}</span>
-          <button class="thread-attachment-dl" data-attachment-index="${i}">Download</button>
+          <button class="thread-attachment-dl" data-attachment-index="${i}">${t("thread.download")}</button>
         </div>
       `).join("")}
     </div>
@@ -260,18 +256,15 @@ function buildExpandedBubble(message, senderName) {
     <div class="thread-bubble-actions">
       <button class="thread-reply-btn" data-action="reply">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
-        Reply
+        ${t("thread.reply")}
       </button>
       <button class="thread-reply-btn" data-action="forward">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>
-        Forward
+        ${t("thread.forward")}
       </button>
     </div>
   `;
 }
-
-
-
 
 
 function toggleBubble(bubble, message, allMessages) {
@@ -315,9 +308,6 @@ function toggleBubble(bubble, message, allMessages) {
 }
 
 
-
-
-
 function bindBubbleButtons(bubble, message, allMessages) {
   bubble.querySelector('[data-action="reply"]')?.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -338,7 +328,7 @@ function bindBubbleButtons(bubble, message, allMessages) {
       if (!attachment) return;
 
       btn.disabled = true;
-      btn.textContent = "Downloading...";
+      btn.textContent = t("thread.downloading");
       try {
         const response = await downloadAttachment(
           message.id,
@@ -363,14 +353,11 @@ function bindBubbleButtons(bubble, message, allMessages) {
         showToast(t("toast.attachment_failed"), "error");
       } finally {
         btn.disabled = false;
-        btn.textContent = "Download";
+        btn.textContent = t("thread.download");
       }
     });
   });
 }
-
-
-
 
 
 function parseAttachments(message) {
@@ -382,17 +369,14 @@ function parseAttachments(message) {
 }
 
 
-
-
-
 function updateThreadActionStates(thread) {
   const buttons = Array.from(document.querySelectorAll(".reading-actions .icon-btn"));
   buttons.forEach(btn => {
     const title = btn.getAttribute("title") || "";
-    if (title === t("reading.star") || title === "Star") {
+    if (title === t("reading.star")) {
       btn.classList.toggle("active", !!thread?.starred);
     }
-    if (title === t("reading.delete") || title === "Delete") {
+    if (title === t("reading.delete")) {
       btn.classList.add("danger");
     }
   });
@@ -413,7 +397,7 @@ export function bindThreadActions(onRefresh, onCountsRefresh) {
       const messageIds = Array.from(document.querySelectorAll(".thread-bubble"))
         .map(b => b.dataset.messageId).filter(Boolean);
 
-      if (title === t("reading.archive") || title === "Archive") {
+      if (title === t("reading.archive")) {
         for (const id of messageIds) await archiveEmail(id).catch(() => {});
         resetReadingPane();
         showToast(t("toast.archived"));
@@ -421,7 +405,7 @@ export function bindThreadActions(onRefresh, onCountsRefresh) {
         return;
       }
 
-      if (title === t("reading.delete") || title === "Delete") {
+      if (title === t("reading.delete")) {
         for (const id of messageIds) await trashEmail(id).catch(() => {});
         resetReadingPane();
         showToast(t("toast.trashed"));
@@ -429,7 +413,7 @@ export function bindThreadActions(onRefresh, onCountsRefresh) {
         return;
       }
 
-      if (title === t("reading.star") || title === "Star") {
+      if (title === t("reading.star")) {
         for (const id of messageIds) await toggleStarred(id).catch(() => {});
         button.classList.toggle("active");
         showToast(t("toast.star_updated"));
@@ -437,7 +421,7 @@ export function bindThreadActions(onRefresh, onCountsRefresh) {
         return;
       }
 
-      if (title === t("reading.close") || title === "Close pane") {
+      if (title === t("reading.close")) {
         selectedThreadId = null;
         selectedThreadMessages = [];
         document.body.classList.add("reading-pane-hidden");
@@ -457,9 +441,6 @@ function resetReadingPane() {
   if (subject) subject.textContent = "";
   if (meta) meta.style.display = "";
 }
-
-
-
 
 
 export function getSelectedThreadId() {

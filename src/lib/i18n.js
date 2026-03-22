@@ -40,6 +40,7 @@ const translations = {
     "reading.more": "More",
     "reading.close": "Close pane",
     "reading.mark_read": "Mark as Read",
+    "reading.mark_unread_action": "Mark as Unread",
     "reading.toggle_star": "Toggle Star",
     "reading.edit_draft": "Edit Draft",
     "reading.send_draft": "Send Draft",
@@ -54,6 +55,14 @@ const translations = {
     "compose.recipient_placeholder": "recipient@example.com",
     "compose.cc_placeholder": "Add cc…",
     "compose.subject_placeholder": "Subject",
+
+    "thread.reply": "Reply",
+    "thread.forward": "Forward",
+    "thread.download": "Download",
+    "thread.downloading": "Downloading...",
+    "thread.attachments": "{n} attachment",
+    "thread.attachments_plural": "{n} attachments",
+    "thread.messages": "messages",
 
     "toast.sending": "Sending mail...",
     "toast.sent": "Email sent",
@@ -76,6 +85,7 @@ const translations = {
     "toast.draft_sent": "Draft sent",
     "toast.attachment_unavailable": "Attachment is unavailable",
     "toast.attachment_failed": "Could not download attachment",
+    "toast.new_email": "New email",
 
     "settings.title": "Settings",
     "settings.tab.account": "Account",
@@ -129,6 +139,7 @@ const translations = {
     "update.restarting": "Restarting...",
     "update.failed": "Update failed: {error}",
 
+    "app.title": "Verdant Mail",
     "app.config_required": "Configuration Required",
     "app.config_missing": "Missing GOOGLE_CLIENT_ID in .env. Add credentials and restart Verdant.",
     "app.init_failed": "Initialization Failed",
@@ -183,6 +194,7 @@ const translations = {
     "reading.more": "Mehr",
     "reading.close": "Bereich schließen",
     "reading.mark_read": "Als gelesen markieren",
+    "reading.mark_unread_action": "Als ungelesen markieren",
     "reading.toggle_star": "Markierung umschalten",
     "reading.edit_draft": "Entwurf bearbeiten",
     "reading.send_draft": "Entwurf senden",
@@ -197,6 +209,14 @@ const translations = {
     "compose.recipient_placeholder": "empfaenger@beispiel.de",
     "compose.cc_placeholder": "Cc hinzufügen…",
     "compose.subject_placeholder": "Betreff",
+
+    "thread.reply": "Antworten",
+    "thread.forward": "Weiterleiten",
+    "thread.download": "Herunterladen",
+    "thread.downloading": "Wird heruntergeladen...",
+    "thread.attachments": "{n} Anhang",
+    "thread.attachments_plural": "{n} Anhänge",
+    "thread.messages": "Nachrichten",
 
     "toast.sending": "E-Mail wird gesendet...",
     "toast.sent": "E-Mail gesendet",
@@ -219,6 +239,7 @@ const translations = {
     "toast.draft_sent": "Entwurf gesendet",
     "toast.attachment_unavailable": "Anhang nicht verfügbar",
     "toast.attachment_failed": "Anhang konnte nicht heruntergeladen werden",
+    "toast.new_email": "Neue E-Mail",
 
     "settings.title": "Einstellungen",
     "settings.tab.account": "Konto",
@@ -272,6 +293,7 @@ const translations = {
     "update.restarting": "Neustart...",
     "update.failed": "Update fehlgeschlagen: {error}",
 
+    "app.title": "Verdant Mail",
     "app.config_required": "Konfiguration erforderlich",
     "app.config_missing": "GOOGLE_CLIENT_ID fehlt in .env. Zugangsdaten hinzufügen und Verdant neu starten.",
     "app.init_failed": "Initialisierung fehlgeschlagen",
@@ -321,7 +343,6 @@ export function getSupportedLanguages() {
     { code: "de", label: "Deutsch" },
   ];
 }
-
 
 export function t(key, vars = {}) {
   const dict = translations[currentLang] || translations.en;

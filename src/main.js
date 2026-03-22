@@ -31,7 +31,7 @@ import {
   renderThreadList, bindThreadActions,
   getSelectedThreadId, clearSelectedThread,
 } from "./ui/thread.js";
-import { initLang } from "./lib/i18n.js";
+import { t, initLang } from "./lib/i18n.js";
 
 
 let currentMailbox = "INBOX";
@@ -144,11 +144,6 @@ function injectUpdateModalStyles() {
       width: 0%;
       transition: width .4s ease;
     }
-    @keyframes verdant-progress-indeterminate {
-      0%   { left: -40%; width: 40%; }
-      60%  { left: 100%; width: 40%; }
-      100% { left: 100%; width: 40%; }
-    }
     .update-progress-bar.indeterminate {
       position: relative;
       width: 100% !important;
@@ -184,20 +179,20 @@ async function runStartupUpdateCheck() {
     toast.innerHTML = `
       <div class="update-toast-header">
         <div>
-          <div class="update-toast-title">Update available — v${escapeHtml(info.latestVersion)}</div>
-          <div class="update-toast-sub">${escapeHtml(info.releaseName || "New release")}</div>
+          <div class="update-toast-title">${t("update.title", { version: escapeHtml(info.latestVersion) })}</div>
+          <div class="update-toast-sub">${escapeHtml(info.releaseName || "")}</div>
         </div>
         <button class="update-toast-close" id="update-toast-close" aria-label="Dismiss">×</button>
       </div>
       <div class="update-progress-wrap" id="update-progress-wrap">
-        <div class="update-progress-label" id="update-progress-label">Downloading...</div>
+        <div class="update-progress-label" id="update-progress-label">${t("update.downloading")}</div>
         <div class="update-progress-track">
           <div class="update-progress-bar indeterminate" id="update-progress-bar"></div>
         </div>
       </div>
       <div class="update-toast-actions" id="update-toast-actions">
-        <button class="update-toast-btn" id="update-toast-dismiss">Later</button>
-        <button class="update-toast-btn primary" id="update-toast-download">Download</button>
+        <button class="update-toast-btn" id="update-toast-dismiss">${t("update.later")}</button>
+        <button class="update-toast-btn primary" id="update-toast-download">${t("update.download")}</button>
       </div>
     `;
 
@@ -220,25 +215,25 @@ async function runStartupUpdateCheck() {
       progressWrap.classList.add("visible");
 
       try {
-        progressLabel.textContent = "Downloading update...";
+        progressLabel.textContent = t("update.downloading");
         const result = await downloadLatestUpdate(channel);
 
-        progressLabel.textContent = "Installing...";
+        progressLabel.textContent = t("update.installing");
         const { invoke } = await import("@tauri-apps/api/core");
         await invoke("install_and_relaunch", { filePath: result.filePath });
 
-        progressLabel.textContent = "Restarting...";
+        progressLabel.textContent = t("update.restarting");
         await new Promise((r) => setTimeout(r, 800));
         const { relaunch } = await import("@tauri-apps/plugin-process");
         await relaunch();
       } catch (err) {
-        progressLabel.textContent = `Update failed: ${String(err)}`;
+        progressLabel.textContent = t("update.failed", { error: String(err) });
         toast.querySelector("#update-progress-bar").classList.remove("indeterminate");
         toast.querySelector("#update-progress-bar").style.background = "#c08d8d";
         setTimeout(() => {
           toast.querySelector("#update-toast-actions").style.display = "flex";
           toast.querySelector("#update-toast-close").style.display = "flex";
-          toast.querySelector("#update-toast-dismiss").textContent = "Close";
+          toast.querySelector("#update-toast-dismiss").textContent = t("reading.close");
           toast.querySelector("#update-toast-download").style.display = "none";
         }, 1800);
       }
@@ -253,7 +248,7 @@ function isImportant(email) {
     l === "SPAM" ||
     l === "TRASH" ||
     l === "CATEGORY_PROMOTIONS"
-    );
+  );
 }
 
 function emailMatchesFilter(email) {
@@ -294,10 +289,10 @@ function renderEmailList(animate = false) {
         <div class="sender-avatar"></div>
         <div class="email-item-inner">
           <div class="email-top">
-            <span class="email-sender">${escapeHtml(sanitizeUnicodeNoise(email.sender || "Unknown Sender"))}</span>
+            <span class="email-sender">${escapeHtml(sanitizeUnicodeNoise(email.sender || t("app.unknown_sender")))}</span>
             <span class="email-time">${escapeHtml(formatListDate(email.date))}</span>
           </div>
-          <div class="email-subject">${escapeHtml(sanitizeUnicodeNoise(email.subject || "(No Subject)"))}</div>
+          <div class="email-subject">${escapeHtml(sanitizeUnicodeNoise(email.subject || t("app.no_subject")))}</div>
           <div class="email-preview">${escapeHtml(sanitizeUnicodeNoise(email.snippet || ""))}</div>
         </div>
       </div>
@@ -420,14 +415,14 @@ async function fetchMoreCurrentMailbox() {
   if (!token) return;
 
   isFetchingMore = true;
-  setListFetchIndicator("Loading more emails...");
+  setListFetchIndicator(t("list.loading_more"));
   try {
     const next = await syncMailboxPage(currentMailbox, token);
     mailboxNextPageToken.set(currentMailbox, next || null);
     currentEmails = await getEmails(currentMailbox);
     renderEmailList(false);
     if (!next) {
-      setListFetchIndicator("No more emails");
+      setListFetchIndicator(t("list.no_more"));
       setTimeout(() => setListFetchIndicator(""), 1000);
     }
   } catch (error) {
@@ -449,7 +444,7 @@ function bindSearch() {
     deepBtn = document.createElement("button");
     deepBtn.id = "deep-search-btn";
     deepBtn.className = "deep-search-btn";
-    deepBtn.textContent = "Deep Search";
+    deepBtn.textContent = t("list.search.deep");
     searchBar.appendChild(deepBtn);
     searchBar.classList.add("has-deep-btn");
   }
@@ -461,7 +456,7 @@ function bindSearch() {
   deepBtn?.addEventListener("click", async () => {
     if (!searchQuery.trim()) return;
     deepBtn.disabled = true;
-    deepBtn.textContent = "Searching...";
+    deepBtn.textContent = t("list.search.searching");
     try {
       const { deepSearchEmails } = await import("./api.js");
       const results = await deepSearchEmails(searchQuery.trim());
@@ -473,7 +468,7 @@ function bindSearch() {
       showToast(String(error), "error", 2600);
     } finally {
       deepBtn.disabled = false;
-      deepBtn.textContent = "Deep Search";
+      deepBtn.textContent = t("list.search.deep");
       updateDeepButtonVisibility();
     }
   });
@@ -548,7 +543,7 @@ function bindHotkeys() {
     if (combo === hotkeys.refresh) {
       event.preventDefault();
       if (!canRunHotkey("refresh")) return;
-      showToast("Fetching mails...");
+      showToast(t("toast.fetching"));
       await syncMailboxInBackground(currentMailbox, true, onSynced);
       return;
     }
@@ -594,7 +589,9 @@ async function initializeConnectedUI() {
     () => selectedEmail,
     (v) => { selectedEmail = v; },
     refreshAfterAction,
-    openComposeForDraft
+    openComposeForDraft,
+    () => currentMailbox,
+    () => getSelectedThreadId(),
   );
   bindFilterChips();
   bindSearch();
@@ -611,7 +608,6 @@ async function initializeConnectedUI() {
     refreshAfterAction,
     () => refreshCounts().catch(console.error)
   );
-
 
   const profile = await getUserProfile();
   setUserProfile(profile);
@@ -631,7 +627,8 @@ async function initializeConnectedUI() {
 
 document.addEventListener("DOMContentLoaded", async () => {
   ensureStyles();
-  initLang();
+  initLang(); // must be before renderShell so all t() calls use correct language
+
   await ensureContactsLoaded().catch(() => {});
 
   try {
@@ -641,8 +638,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       renderShell();
       document.getElementById("root").innerHTML = `
         <div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:'DM Sans',sans-serif;color:var(--text-mid);flex-direction:column;gap:12px;">
-          <div style="font:500 15px 'Fraunces',serif;color:var(--text);">Configuration Required</div>
-          <div style="font-size:13px;">Missing GOOGLE_CLIENT_ID in .env. Add credentials and restart Verdant.</div>
+          <div style="font:500 15px 'Fraunces',serif;color:var(--text);">${t("app.config_required")}</div>
+          <div style="font-size:13px;">${t("app.config_missing")}</div>
         </div>
       `;
       return;
@@ -657,9 +654,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   } catch (error) {
     document.getElementById("root").innerHTML = `
       <div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:'DM Sans',sans-serif;color:var(--text-mid);flex-direction:column;gap:12px;">
-        <div style="font:500 15px 'Fraunces',serif;color:var(--text);">Initialization Failed</div>
+        <div style="font:500 15px 'Fraunces',serif;color:var(--text);">${t("app.init_failed")}</div>
         <div style="font-size:13px;">${escapeHtml(String(error))}</div>
-        <button onclick="window.location.reload()" style="margin-top:8px;padding:8px 16px;background:var(--green);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif;">Retry</button>
+        <button onclick="window.location.reload()" style="margin-top:8px;padding:8px 16px;background:var(--green);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif;">${t("app.retry")}</button>
       </div>
     `;
   }

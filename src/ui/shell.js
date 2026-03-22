@@ -6,7 +6,7 @@ export function renderShell() {
     <header class="app-header" id="app-header">
       <div class="app-header-left" id="app-header-left">
         <span class="app-dot"></span>
-        <span class="app-title">Verdant Mail</span>
+        <span class="app-title">${t("app.title")}</span>
         <span class="app-subtitle">- ${t("sidebar.inbox")}</span>
       </div>
       <div class="app-header-controls" id="app-header-controls">
