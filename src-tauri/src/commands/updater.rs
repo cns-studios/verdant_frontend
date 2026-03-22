@@ -51,13 +51,20 @@ fn parse_update_channel(raw: Option<String>) -> UpdateChannel {
 }
 
 fn normalize_version(raw: &str) -> String {
-    raw.trim().trim_start_matches('v').to_string()
+    let s = raw.trim();
+    if let Some(rest) = s.strip_prefix("nightly-v") {
+        if let Some(idx) = rest.rfind('-') {
+            return rest[..idx].to_string();
+        }
+        return rest.to_string();
+    }
+    s.trim_start_matches('v').to_string()
 }
 
 fn version_is_newer(current: &str, latest: &str) -> bool {
     match (Version::parse(current), Version::parse(latest)) {
         (Ok(c), Ok(l)) => l > c,
-        _ => current != latest,
+        _ => false,
     }
 }
 
@@ -242,20 +249,16 @@ pub async fn check_for_updates(channel: Option<String>) -> Result<UpdateInfo, St
     let current_version = normalize_version(env!("CARGO_PKG_VERSION"));
     let release = fetch_release_for_channel(channel).await?;
 
-    let latest_raw = release
+    let latest_tag = release
         .get("tag_name")
         .and_then(Value::as_str)
-        .unwrap_or_default();
-    let latest_version = normalize_version(latest_raw);
-    if latest_version.is_empty() {
-        return Err("Latest release has no valid tag_name".to_string());
-    }
+        .unwrap_or_default()
+        .to_string();
 
-    let update_available = if channel == UpdateChannel::Nightly {
-        current_version != latest_version
-    } else {
-        version_is_newer(&current_version, &latest_version)
-    };
+    let latest_version = normalize_version(&latest_tag);
+
+    let update_available = version_is_newer(&current_version, &latest_version);
+    
     let release_name = release
         .get("name")
         .and_then(Value::as_str)
