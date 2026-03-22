@@ -67,10 +67,10 @@ jobs:
           set -eux
           VERSION=$(node -p "JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json','utf8')).version")
           BINARY=$(ls src-tauri/target/release/Verdant-Desktop)
-          mkdir -p out/archpkg/icons
+          mkdir -p out/archpkg
           cp "$BINARY" out/archpkg/verdant
-          cp src-tauri/icons/32x32.png out/archpkg/icons/32x32.png
-          cp src-tauri/icons/128x128.png out/archpkg/icons/128x128.png
+          cp src-tauri/icons/32x32.png out/archpkg/32x32.png
+          cp src-tauri/icons/128x128.png out/archpkg/128x128.png
 
           cat > out/archpkg/PKGBUILD << EOF
           pkgname=verdant-desktop-bin
@@ -82,7 +82,7 @@ jobs:
           license=('custom')
           depends=('gtk3' 'webkit2gtk-4.1' 'libayatana-appindicator')
           options=('!debug' '!strip')
-          source=('verdant' 'icons/32x32.png' 'icons/128x128.png')
+          source=('verdant' '32x32.png' '128x128.png')
           sha256sums=('SKIP' 'SKIP' 'SKIP')
 
           package() {
