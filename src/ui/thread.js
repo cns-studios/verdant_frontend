@@ -389,11 +389,17 @@ export function bindThreadActions(onRefresh, onCountsRefresh) {
   const buttons = Array.from(document.querySelectorAll(".reading-actions .icon-btn"));
 
   for (const button of buttons) {
-      const title = button.getAttribute("title") || "";
+    const title = button.getAttribute("title") || "";
 
-      if (title === t("reading.more") || title === t("reading.close")) continue;
+    button.onclick = async () => {
+      if (title === t("reading.close")) {
+        selectedThreadId = null;
+        selectedThreadMessages = [];
+        document.body.classList.add("reading-pane-hidden");
+        document.querySelectorAll(".email-item").forEach(el => el.classList.remove("active"));
+        return;
+      }
 
-      button.onclick = async () => {
       if (!selectedThreadId) return;
 
       const messageIds = Array.from(document.querySelectorAll(".thread-bubble"))
@@ -415,6 +421,26 @@ export function bindThreadActions(onRefresh, onCountsRefresh) {
         return;
       }
 
+      if (title === t("reading.mark_unread")) {
+        // Mark all messages in thread as unread
+        for (const id of messageIds) {
+          await setEmailReadStatus(id, false).catch(() => {});
+        }
+        // Update the thread row in the list
+        const row = document.querySelector(`.email-item[data-thread-id="${selectedThreadId}"]`);
+        if (row) {
+          row.classList.add("unread");
+          if (!row.querySelector(".unread-dot")) {
+            const dot = document.createElement("div");
+            dot.className = "unread-dot";
+            row.prepend(dot);
+          }
+        }
+        showToast(t("toast.unread_marked"));
+        if (onCountsRefreshCallback) onCountsRefreshCallback();
+        return;
+      }
+
       if (title === t("reading.star")) {
         for (const id of messageIds) await toggleStarred(id).catch(() => {});
         button.classList.toggle("active");
@@ -423,11 +449,10 @@ export function bindThreadActions(onRefresh, onCountsRefresh) {
         return;
       }
 
-      if (title === t("reading.close")) {
-        selectedThreadId = null;
-        selectedThreadMessages = [];
-        document.body.classList.add("reading-pane-hidden");
-        document.querySelectorAll(".email-item").forEach(el => el.classList.remove("active"));
+      if (title === t("reading.more")) {
+        // "more" menu is handled by reading.js bindReadingActions for non-thread path;
+        // for threads we just skip — no-op here since bindReadingActions also attaches to this button.
+        return;
       }
     };
   }

@@ -203,7 +203,7 @@ export async function openSettingsModal(profile, currentMailbox, onLogout, onSyn
       </div>
     </section>
 
-    <!-- App tab — cleaned up into clear groups -->
+    <!-- App tab -->
     <section class="settings-pane" data-pane="app">
 
       <div class="settings-section-label">Version</div>
@@ -277,7 +277,6 @@ export async function openSettingsModal(profile, currentMailbox, onLogout, onSyn
   // Language
   panel.querySelector("#settings-lang-select")?.addEventListener("change", (e) => {
     setLang(e.target.value);
-    // Re-open settings with new language
     closeOverlay();
     openSettingsModal(profile, currentMailbox, onLogout, onSync);
   });
@@ -319,18 +318,39 @@ export async function openSettingsModal(profile, currentMailbox, onLogout, onSyn
     await checkForAppUpdates({ silent: false, autoDownload: false, updateSettingsUi: true, channel: updatePrefs.channel });
   });
 
+  // Download + install + relaunch
   panel.querySelector("#settings-download-update")?.addEventListener("click", async () => {
+    const btn = panel.querySelector("#settings-download-update");
+    if (btn) { btn.disabled = true; btn.textContent = t("settings.app.downloading"); }
+
     setUpdateStatus(t("settings.app.checking"));
     const info = await checkForAppUpdates({ silent: true, autoDownload: false, updateSettingsUi: true, channel: updatePrefs.channel });
-    if (!info?.updateAvailable) { showToast(t("toast.no_update")); return; }
+    if (!info?.updateAvailable) {
+      showToast(t("toast.no_update"));
+      if (btn) { btn.disabled = false; btn.textContent = t("settings.app.download_update"); }
+      return;
+    }
+
     setUpdateStatus(t("settings.app.downloading"));
     try {
       const downloaded = await downloadLatestUpdate(updatePrefs.channel);
       setUpdateStatus(t("toast.update_downloaded", { file: downloaded.fileName }));
       showToast(t("toast.update_downloaded", { file: downloaded.fileName }));
+
+      // Install
+      if (btn) btn.textContent = t("update.installing");
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("install_and_relaunch", { filePath: downloaded.filePath });
+
+      // Relaunch
+      if (btn) btn.textContent = t("update.restarting");
+      await new Promise(r => setTimeout(r, 600));
+      const { relaunch } = await import("@tauri-apps/plugin-process");
+      await relaunch();
     } catch (error) {
       setUpdateStatus(t("settings.app.download_failed"), true);
       showToast(`${t("settings.app.download_failed")}: ${String(error)}`, "error");
+      if (btn) { btn.disabled = false; btn.textContent = t("settings.app.download_update"); }
     }
   });
 

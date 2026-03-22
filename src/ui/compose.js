@@ -1,6 +1,7 @@
 import { sendEmail, saveDraft, sendExistingDraft } from "../api.js";
 import { escapeHtml, sanitizeUnicodeNoise } from "../lib/format.js";
 import { showToast } from "../lib/toast.js";
+import { t } from "../lib/i18n.js";
 import {
   contactsByEmail,
   upsertContact,
@@ -91,12 +92,9 @@ export function openComposeForReply(email) {
 
   if (subjectInput) subjectInput.value = reSubject;
 
-  
   const quotedHtml = buildQuotedHtml(email);
   if (bodyInput) {
-    
     bodyInput.innerHTML = `<div><br></div>${quotedHtml}`;
-    
     const sel = window.getSelection();
     const range = document.createRange();
     const firstDiv = bodyInput.querySelector("div");
@@ -118,7 +116,6 @@ export function openComposeForReply(email) {
 export function openComposeForForward(email) {
   if (!email) return;
 
-  
   setComposeRecipientsFromHeader("to", "");
   setComposeRecipientsFromHeader("cc", "");
 
@@ -134,7 +131,6 @@ export function openComposeForForward(email) {
 
   if (subjectInput) subjectInput.value = fwdSubject;
 
-  
   const fwdHtml = buildForwardHtml(email);
   if (bodyInput) {
     bodyInput.innerHTML = `<div><br></div>${fwdHtml}`;
@@ -153,7 +149,6 @@ export function openComposeForForward(email) {
   composeDraftId = null;
 
   openCompose();
-  
   document.getElementById("compose-to")?.focus();
 }
 
@@ -687,7 +682,7 @@ export function bindComposeDraftSave(onAfterSave) {
 
   draftBtn.addEventListener("click", async () => {
     const payload = collectComposePayload();
-    showToast("Saving draft...");
+    showToast(t("toast.draft_saving"));
     const result = await saveDraft({
       to: payload.to, cc: payload.cc, subject: payload.subject,
       body: payload.body, mode: composeSendMode,
@@ -695,7 +690,7 @@ export function bindComposeDraftSave(onAfterSave) {
       attachments: composeAttachments, draftId: composeDraftId,
     });
     composeDraftId = result.draft_id || composeDraftId;
-    showToast("Draft saved");
+    showToast(t("toast.draft_saved"));
     await onAfterSave();
   });
 }

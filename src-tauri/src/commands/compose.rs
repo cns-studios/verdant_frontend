@@ -35,7 +35,6 @@ pub async fn send_email(
     };
 
     if account.provider == "imap" {
-        
         let smtp_attachments: Vec<SmtpAttachment> = attachments.into_iter().map(|a| SmtpAttachment {
             filename: a.filename,
             content_type: a.content_type,
@@ -55,7 +54,6 @@ pub async fn send_email(
         let body_c = body.clone();
         let html_c = html.clone();
         let attachments_c = smtp_attachments.clone();
-
         let in_reply_to_c = in_reply_to.clone();
         let references_c = references.clone();
 
@@ -65,26 +63,26 @@ pub async fn send_email(
             crate::imap_sync::append_to_sent(&account_clone, &to_c, &cc_c, &subject_c, &body_c, html_c.as_deref())
         }).await.map_err(|e| e.to_string())??;
 
-        
+        // Kick off background SENT sync for IMAP — fire and forget, don't surface errors
         let state_arc = (*state).clone();
         tokio::spawn(async move {
             let _ = sync_mailbox_internal_for(&state_arc, account_id, "SENT").await;
         });
-        
-        sync_mailbox_internal_for(&state, account_id, "SENT").await?;
-    } else {
-        
-        let token = ensure_token(&state).await?.access_token;
-        let encoded = build_raw_mime_message(to, cc, subject, body, mode, body_html, attachments)?;
-        let client = reqwest::Client::new();
-        let res = client
-            .post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send")
-            .bearer_auth(&token)
-            .json(&json!({ "raw": encoded }))
-            .send().await.map_err(|e| e.to_string())?;
-        if !res.status().is_success() {
-            return Err(format!("Send error: {}", res.status()));
-        }
+
+        return Ok(());
+    }
+
+    // Gmail path
+    let token = ensure_token(&state).await?.access_token;
+    let encoded = build_raw_mime_message(to, cc, subject, body, mode, body_html, attachments)?;
+    let client = reqwest::Client::new();
+    let res = client
+        .post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send")
+        .bearer_auth(&token)
+        .json(&json!({ "raw": encoded }))
+        .send().await.map_err(|e| e.to_string())?;
+    if !res.status().is_success() {
+        return Err(format!("Send error: {}", res.status()));
     }
 
     Ok(())
@@ -147,7 +145,7 @@ pub async fn save_draft(
         return Ok(DraftSaveResult { draft_id });
     }
 
-    
+    // Gmail path
     let token = ensure_token(&state).await?.access_token;
     let encoded = build_raw_mime_message(to, cc, subject, body, mode, body_html, attachments)?;
     let payload = json!({ "message": { "raw": encoded } });
@@ -199,6 +197,7 @@ pub async fn send_existing_draft(
         ).map_err(|e| e.to_string())?;
         return Ok(());
     }
+
     let token = ensure_token(&state).await?.access_token;
     let client = reqwest::Client::new();
     let draft_id_clean = draft_id.trim().to_string();

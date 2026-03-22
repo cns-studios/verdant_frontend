@@ -5,14 +5,12 @@ use serde::{Deserialize, Serialize};
 pub struct Account {
     pub id: i64,
     pub email: String,
-    pub provider: String, 
+    pub provider: String,
     pub display_name: Option<String>,
     pub is_active: bool,
-    
     pub access_token: Option<String>,
     pub refresh_token: Option<String>,
     pub expires_at_epoch: Option<i64>,
-    
     pub imap_host: Option<String>,
     pub imap_port: Option<i64>,
     pub smtp_host: Option<String>,
@@ -72,7 +70,6 @@ pub struct StoredToken {
 }
 
 pub fn init_db(conn: &Connection) -> Result<()> {
-    
     conn.execute_batch("
         CREATE TABLE IF NOT EXISTS accounts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,7 +89,6 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         );
     ")?;
 
-    
     conn.execute_batch("
         CREATE TABLE IF NOT EXISTS emails (
             id TEXT NOT NULL,
@@ -117,7 +113,8 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         );
     ")?;
 
-    
+    // Legacy oauth_tokens migration — runs once, then the table is left in place
+    // but the placeholder account is cleaned up immediately after.
     let legacy_exists: bool = conn.query_row(
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='oauth_tokens'",
         [],
@@ -125,7 +122,6 @@ pub fn init_db(conn: &Connection) -> Result<()> {
     ).unwrap_or(0) > 0;
 
     if legacy_exists {
-        
         let migrated = conn.query_row(
             "SELECT access_token, refresh_token, expires_at_epoch FROM oauth_tokens WHERE id = 1",
             [],
@@ -146,11 +142,19 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             )?;
         }
 
-        
         let _ = conn.execute("ALTER TABLE emails ADD COLUMN account_id INTEGER NOT NULL DEFAULT 1", []);
     }
 
-    
+    // Always clean up the placeholder migration account if no real emails are
+    // associated with it — it only existed as a token carrier and is no longer needed.
+    let _ = conn.execute(
+        "DELETE FROM accounts WHERE email = 'migrated@gmail.com' AND NOT EXISTS (
+            SELECT 1 FROM emails WHERE account_id = accounts.id
+        )",
+        [],
+    );
+
+    // Idempotent column additions (safe to fail if column already exists)
     let _ = conn.execute("ALTER TABLE emails ADD COLUMN account_id INTEGER NOT NULL DEFAULT 1", []);
     let _ = conn.execute("ALTER TABLE emails ADD COLUMN snippet TEXT NOT NULL DEFAULT ''", []);
     let _ = conn.execute("ALTER TABLE emails ADD COLUMN to_recipients TEXT NOT NULL DEFAULT ''", []);
@@ -163,7 +167,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
     let _ = conn.execute("ALTER TABLE emails ADD COLUMN attachments_json TEXT NOT NULL DEFAULT '[]'", []);
     let _ = conn.execute("ALTER TABLE emails ADD COLUMN has_attachments INTEGER NOT NULL DEFAULT 0", []);
 
-    
+    // Clean up seed/test data
     let _ = conn.execute(
         "DELETE FROM emails WHERE subject = 'Welcome to Verdant' AND sender = 'foo@example.com'",
         [],
@@ -299,8 +303,6 @@ pub fn update_account_email(conn: &Connection, account_id: i64, email: &str) -> 
     Ok(())
 }
 
-
-
 pub fn clear_account_emails(conn: &Connection, account_id: i64) -> Result<()> {
     conn.execute("DELETE FROM emails WHERE account_id = ?1", params![account_id])?;
     Ok(())
@@ -310,8 +312,6 @@ pub fn clear_emails(conn: &Connection) -> Result<()> {
     conn.execute("DELETE FROM emails", [])?;
     Ok(())
 }
-
-
 
 pub fn get_token(conn: &Connection) -> Result<Option<StoredToken>> {
     let account = get_active_account(conn)?;
@@ -325,7 +325,6 @@ pub fn get_token(conn: &Connection) -> Result<Option<StoredToken>> {
 }
 
 pub fn clear_tokens(conn: &Connection) -> Result<()> {
-    
     conn.execute(
         "UPDATE accounts SET access_token = NULL, refresh_token = NULL, expires_at_epoch = NULL WHERE is_active = 1",
         [],
