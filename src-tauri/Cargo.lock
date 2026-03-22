@@ -4,7 +4,7 @@ version = 3
 
 [[package]]
 name = "Verdant-Desktop"
-version = "2.1.2"
+version = "2.1.4"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
