@@ -38,7 +38,10 @@ export function openCompose() {
 
 export function closeCompose() {
   const modal = document.getElementById("composeModal");
-  if (modal) modal.classList.remove("open");
+  if (modal) {
+    modal.classList.remove("open");
+    modal.querySelector(".compose-modal")?.classList.remove("compose-maximized");
+  }
   window.dispatchEvent(new CustomEvent("verdant-compose-closed"));
 }
 
@@ -73,9 +76,9 @@ function recipientFieldNodes(field) {
 
 export function openComposeForReply(email) {
   if (!email) return;
-  const rawId = email.id.includes(':') ? email.id.split(':').slice(1).join(':') : email.id;
-  composeInReplyTo = rawId;
-  composeReferences = rawId;
+  const msgIdHeader = email.message_id_header || (email.id.includes(':') ? email.id.split(':').slice(1).join(':') : email.id);
+  composeInReplyTo = msgIdHeader;
+  composeReferences = msgIdHeader;
 
   setComposeRecipientsFromHeader("to", email.sender || "");
   setComposeRecipientsFromHeader("cc", "");
@@ -420,6 +423,10 @@ export function bindComposeRecipientInputs() {
   renderRecipientChips("cc");
 }
 
+export function resetComposeRecipientUiBound() {
+  composeRecipientUiBound = false;
+}
+
 function normalizeComposeHtml(rawHtml) {
   const trimmed = (rawHtml || "").trim();
   if (!trimmed || trimmed === "<br>" || trimmed === "<div><br></div>") return "";
@@ -517,6 +524,26 @@ function applyFormatToComposer(formatType) {
   composeSendMode = "html";
 }
 
+function updateFormatButtonStates() {
+  const toolbar = document.getElementById("compose-format-toolbar");
+  if (!toolbar || !toolbar.classList.contains("open")) return;
+
+  const buttons = toolbar.querySelectorAll("[data-format]");
+  buttons.forEach(btn => {
+    const format = btn.dataset.format;
+    let isActive = false;
+
+    if (format === "bold") isActive = document.queryCommandState("bold");
+    else if (format === "italic") isActive = document.queryCommandState("italic");
+    else if (format === "list") isActive = document.queryCommandState("insertUnorderedList");
+    else if (format === "header") isActive = closestInEditor(document.getElementById("compose-body"), "h2");
+    else if (format === "quote") isActive = closestInEditor(document.getElementById("compose-body"), "blockquote");
+    else if (format === "code") isActive = closestInEditor(document.getElementById("compose-body"), "pre");
+
+    btn.classList.toggle("active", !!isActive);
+  });
+}
+
 export function bindComposeFormatting() {
   const formatToggle = document.getElementById("compose-format-btn");
   const toolbar = document.getElementById("compose-format-toolbar");
@@ -529,8 +556,17 @@ export function bindComposeFormatting() {
   });
 
   toolbar.querySelectorAll("[data-format]").forEach((button) => {
-    button.addEventListener("click", () => applyFormatToComposer(button.getAttribute("data-format") || "bold"));
+    button.addEventListener("click", () => {
+      applyFormatToComposer(button.getAttribute("data-format") || "bold");
+      updateFormatButtonStates();
+    });
   });
+
+  const editor = document.getElementById("compose-body");
+  if (editor) {
+    const events = ["input", "mouseup", "keyup", "focus"];
+    events.forEach(ev => editor.addEventListener(ev, updateFormatButtonStates));
+  }
 
   window.addEventListener("verdant-compose-closed", () => {
     toolbar.classList.remove("open");

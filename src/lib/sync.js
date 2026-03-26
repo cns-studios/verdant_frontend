@@ -57,7 +57,7 @@ export async function syncMailboxInBackground(mailbox, force = false, onSynced =
   } catch {}
 
   
-  if (mailbox !== "STARRED" && mailbox !== "ARCHIVE") {
+  if (mailbox !== "STARRED") {
     showToast(t("toast.fetching"), "info", 1200);
     const next = await syncMailboxPage(mailbox, null);
     mailboxNextPageToken.set(mailbox, next || null);

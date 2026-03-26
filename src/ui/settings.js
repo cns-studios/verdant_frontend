@@ -153,6 +153,10 @@ export async function openSettingsModal(profile, currentMailbox, onLogout, onSyn
   const langs = getSupportedLanguages();
   const currentLang = getLang();
 
+  const { getActiveAccountInfo } = await import("../api.js");
+  const activeAccount = await getActiveAccountInfo().catch(() => ({ provider: 'gmail' }));
+  const isGmail = activeAccount.provider === 'gmail';
+
   showOverlay(t("settings.title"), `${t("settings.account.email")}: ${profile.email}`, []);
   const panel = document.querySelector("#verdant-overlay .verdant-panel");
   if (!panel) return;
@@ -171,7 +175,9 @@ export async function openSettingsModal(profile, currentMailbox, onLogout, onSyn
       <div class="settings-card">
         <div class="settings-info-row"><span>${escapeHtml(t("settings.account.name"))}</span><strong>${escapeHtml(profile.name || "User")}</strong></div>
         <div class="settings-info-row"><span>${escapeHtml(t("settings.account.email"))}</span><strong>${escapeHtml(profile.email || "-")}</strong></div>
+        ${isGmail ? `
         <div class="settings-info-row"><span>${escapeHtml(t("settings.account.gmail_status"))}</span><strong>${auth.connected ? escapeHtml(t("settings.account.gmail_connected")) : escapeHtml(t("settings.account.gmail_disconnected"))}</strong></div>
+        ` : ''}
         <div class="settings-info-row"><span>${escapeHtml(t("settings.account.inbox"))}</span><strong>${escapeHtml(t("settings.account.inbox_value", { unread: counts.inbox_unread, total: counts.inbox_total }))}</strong></div>
         <div class="settings-info-row"><span>${escapeHtml(t("settings.account.last_sync"))}</span><strong>${escapeHtml(lastInboxSync)}</strong></div>
       </div>

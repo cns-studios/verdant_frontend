@@ -233,6 +233,7 @@ pub fn sync_imap_mailbox(
             .unwrap_or_else(|| message_id.clone());
 
         let is_read = msg.flags().iter().any(|f| matches!(f, imap::types::Flag::Seen));
+        let starred = msg.flags().iter().any(|f| matches!(f, imap::types::Flag::Flagged));
         let body_html = parse_body(&parsed);
         let snippet: String = parsed.get_body().unwrap_or_default()
             .chars().take(180).collect::<String>().replace('\n', " ");
@@ -257,10 +258,12 @@ pub fn sync_imap_mailbox(
             has_attachments,
             date,
             is_read,
-            starred: false,
+            starred,
             mailbox: mailbox_label.to_string(),
             labels: mailbox_label.to_string(),
             internal_ts,
+            uid: msg.uid.map(|u| u as i64),
+            message_id_header: Some(message_id),
         });
     }
 
@@ -335,6 +338,71 @@ pub fn append_to_sent(
     session
         .append_with_flags(&sent_folder, body.as_bytes(), &[flags])
         .map_err(|e| format!("IMAP APPEND error: {}", e))?;
+
+    let _ = session.logout();
+    Ok(())
+}
+
+pub enum ImapAction {
+    MarkRead,
+    MarkUnread,
+    Star,
+    Unstar,
+    Archive,
+    Trash,
+}
+
+pub fn imap_action(
+    account: &Account,
+    mailbox: &str,
+    uid: u32,
+    action: ImapAction,
+) -> Result<(), String> {
+    let creds = ImapCredentials::from_account(account)?;
+    let mut session = connect(&creds)?;
+
+    let folders: Vec<String> = session
+        .list(None, Some("*"))
+        .map_err(|e| format!("IMAP LIST error: {}", e))?
+        .iter().map(|n| n.name().to_string()).collect();
+
+    let folder = imap_folder_for_mailbox(mailbox, &folders)
+        .ok_or_else(|| format!("Folder for mailbox {} not found", mailbox))?;
+
+    session.select(&folder).map_err(|e| format!("IMAP SELECT error: {}", e))?;
+
+    match action {
+        ImapAction::MarkRead => {
+            session.uid_store(format!("{}", uid), "+FLAGS (\\Seen)")
+                .map_err(|e| format!("IMAP STORE error: {}", e))?;
+        }
+        ImapAction::MarkUnread => {
+            session.uid_store(format!("{}", uid), "-FLAGS (\\Seen)")
+                .map_err(|e| format!("IMAP STORE error: {}", e))?;
+        }
+        ImapAction::Star => {
+            session.uid_store(format!("{}", uid), "+FLAGS (\\Flagged)")
+                .map_err(|e| format!("IMAP STORE error: {}", e))?;
+        }
+        ImapAction::Unstar => {
+            session.uid_store(format!("{}", uid), "-FLAGS (\\Flagged)")
+                .map_err(|e| format!("IMAP STORE error: {}", e))?;
+        }
+        ImapAction::Archive | ImapAction::Trash => {
+            let target_mailbox = match action {
+                ImapAction::Archive => "ARCHIVE",
+                _ => "TRASH",
+            };
+            let target_folder = imap_folder_for_mailbox(target_mailbox, &folders)
+                .ok_or_else(|| format!("Target folder for {} not found", target_mailbox))?;
+
+            session.uid_copy(format!("{}", uid), &target_folder)
+                .map_err(|e| format!("IMAP COPY error: {}", e))?;
+            session.uid_store(format!("{}", uid), "+FLAGS (\\Deleted)")
+                .map_err(|e| format!("IMAP STORE error: {}", e))?;
+            session.expunge().map_err(|e| format!("IMAP EXPUNGE error: {}", e))?;
+        }
+    }
 
     let _ = session.logout();
     Ok(())

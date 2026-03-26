@@ -19,8 +19,9 @@ function formatParticipants(rawSenders, maxDisplay = 3) {
   if (!rawSenders) return t("app.unknown_sender");
 
   const seen = new Set();
+  const separator = rawSenders.includes("|||") ? "|||" : ",";
   const names = rawSenders
-    .split(",")
+    .split(separator)
     .map(s => {
       const clean = sanitizeUnicodeNoise(s.trim());
       const nameOnly = clean
@@ -93,7 +94,7 @@ export function renderThreadList(threads, activeFilter, searchQuery) {
       </div>
     `;
 
-    const firstSender = (thread.participants || "").split(",")[0] || "";
+    const firstSender = (thread.participants || "").split(thread.participants.includes("|||") ? "|||" : ",")[0] || "";
     applySenderAvatar(row.querySelector(".sender-avatar"), firstSender, "INBOX");
     row.addEventListener("click", () => selectThread(thread, row));
     list.appendChild(row);
@@ -110,16 +111,16 @@ async function selectThread(thread, row) {
   selectedThreadId = thread.thread_id;
   selectedThreadMessages = [];
 
+  const readingBody = document.querySelector(".reading-body");
+  if (readingBody) {
+    readingBody.innerHTML = `<div class="thread-loading">${escapeHtml(t("toast.fetching"))}</div>`;
+  }
+
   document.querySelectorAll(".email-item").forEach(el => el.classList.remove("active"));
   row.classList.add("active");
   row.classList.remove("unread");
   row.querySelector(".unread-dot")?.remove();
   document.body.classList.remove("reading-pane-hidden");
-
-  const readingBody = document.querySelector(".reading-body");
-  if (readingBody) {
-    readingBody.innerHTML = `<div class="thread-loading">${escapeHtml(t("toast.fetching"))}</div>`;
-  }
 
   try {
     const messages = await getThreadMessages(thread.thread_id);
@@ -391,8 +392,9 @@ export function bindThreadActions(onRefresh, onCountsRefresh) {
   for (const button of buttons) {
     const title = button.getAttribute("title") || "";
 
-    button.onclick = async () => {
+    button.addEventListener("click", async (event) => {
       if (title === t("reading.close")) {
+        event.stopImmediatePropagation();
         selectedThreadId = null;
         selectedThreadMessages = [];
         document.body.classList.add("reading-pane-hidden");
@@ -454,7 +456,7 @@ export function bindThreadActions(onRefresh, onCountsRefresh) {
         // for threads we just skip — no-op here since bindReadingActions also attaches to this button.
         return;
       }
-    };
+    });
   }
 }
 

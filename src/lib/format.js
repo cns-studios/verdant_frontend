@@ -20,7 +20,6 @@ export function sanitizeUnicodeNoise(input) {
 
 export function stripMailTimezone(raw) {
   return String(raw || "")
-    .replace(/\s(?:GMT|UTC)?[+-]\d{4}\b/gi, "")
     .replace(/\s+\((?:GMT|UTC)[^)]*\)/gi, "")
     .trim();
 }

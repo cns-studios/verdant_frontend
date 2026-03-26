@@ -244,6 +244,43 @@ export function renderReadingPane(email) {
   const body = document.querySelector(".email-body-text");
   const avatar = document.querySelector(".meta-avatar");
 
+  const labelsContainer = document.querySelector(".reading-labels") || (() => {
+    const div = document.createElement("div");
+    div.className = "reading-labels";
+    subject?.parentElement?.insertBefore(div, subject?.nextSibling);
+    return div;
+  })();
+  labelsContainer.innerHTML = "";
+  if (email.labels) {
+    email.labels.split(",").filter(Boolean).forEach(label => {
+      const span = document.createElement("span");
+      span.className = "email-label-badge";
+      span.innerHTML = `
+        ${escapeHtml(label.trim())}
+        <button class="label-remove-btn" title="${escapeHtml(t("reading.delete"))}">×</button>
+      `;
+      span.onclick = (e) => {
+        if (e.target.classList.contains("label-remove-btn")) {
+          e.stopPropagation();
+          const { removeLabel } = import("../api.js").then(m => {
+            m.removeLabel(email.id, label.trim()).then(() => {
+               email.labels = email.labels.split(",").filter(l => l.trim() !== label.trim()).join(",");
+               renderReadingPane(email);
+            });
+          });
+          return;
+        }
+        // Browse label: click to search
+        const searchInput = document.getElementById("search-input");
+        if (searchInput) {
+          searchInput.value = `label:${label.trim()}`;
+          searchInput.dispatchEvent(new Event("input"));
+        }
+      };
+      labelsContainer.appendChild(span);
+    });
+  }
+
   if (subject) subject.textContent = sanitizeUnicodeNoise(email.subject || t("app.no_subject"));
   if (from) from.textContent = sanitizeUnicodeNoise(email.sender || t("app.unknown_sender"));
   if (date) date.textContent = formatReadingDate(email.date || "");
@@ -280,10 +317,13 @@ export function bindReadingActions(getSelected, setSelected, onRefresh, openComp
   for (const button of buttons) {
     const title = button.getAttribute("title") || "";
 
-    button.onclick = async () => {
+    button.addEventListener("click", async (event) => {
       const email = getSelected();
+      const threadId = getThreadId?.();
 
       if (title === t("reading.archive")) {
+        if (threadId) return;
+        event.stopImmediatePropagation();
         if (email) {
           await archiveEmail(email.id);
         }
@@ -293,6 +333,8 @@ export function bindReadingActions(getSelected, setSelected, onRefresh, openComp
       }
 
       if (title === t("reading.delete")) {
+        if (threadId) return;
+        event.stopImmediatePropagation();
         if (email) {
           await trashEmail(email.id);
         }
@@ -302,18 +344,8 @@ export function bindReadingActions(getSelected, setSelected, onRefresh, openComp
       }
 
       if (title === t("reading.mark_unread")) {
-        const threadId = getThreadId?.();
-        if (threadId) {
-          const { markThreadRead } = await import("../api.js");
-          const messages = Array.from(document.querySelectorAll(".thread-bubble"))
-            .map(b => b.dataset.messageId).filter(Boolean);
-          for (const id of messages) {
-            await setEmailReadStatus(id, false).catch(() => {});
-          }
-          showToast(t("toast.unread_marked"));
-          await onRefresh();
-          return;
-        }
+        if (threadId) return;
+        event.stopImmediatePropagation();
         if (email) {
           const nextRead = !email.is_read;
           await setEmailReadStatus(email.id, nextRead);
@@ -325,6 +357,8 @@ export function bindReadingActions(getSelected, setSelected, onRefresh, openComp
       }
 
       if (title === t("reading.star")) {
+        if (threadId) return;
+        event.stopImmediatePropagation();
         if (email) {
           await toggleStarred(email.id);
           email.starred = !email.starred;
@@ -336,6 +370,7 @@ export function bindReadingActions(getSelected, setSelected, onRefresh, openComp
       }
 
       if (title === t("reading.more")) {
+        event.stopImmediatePropagation();
         const mailbox = getCurrentMailbox?.() || "INBOX";
         const isDraft = email?.mailbox === "DRAFT";
 
@@ -394,7 +429,7 @@ export function bindReadingActions(getSelected, setSelected, onRefresh, openComp
         document.querySelectorAll(".email-item").forEach((el) => el.classList.remove("active"));
         setReadingPaneHidden(true);
       }
-    };
+    });
   }
 }
 
@@ -416,8 +451,13 @@ function buildActionMenu(entries, anchor, onRefresh) {
     menu.appendChild(b);
   });
 
-  anchor.style.position = "relative";
-  anchor.appendChild(menu);
+  const rect = anchor.getBoundingClientRect();
+  menu.style.position = "fixed";
+  menu.style.top = `${rect.bottom + 5}px`;
+  menu.style.left = `${rect.right - 160}px`;
+  menu.style.zIndex = "2500";
+
+  document.body.appendChild(menu);
   setTimeout(() => {
     document.addEventListener("click", () => menu.remove(), { once: true });
   }, 0);

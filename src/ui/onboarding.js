@@ -195,6 +195,18 @@ export function showOnboarding(onSuccess, cancelable = false) {
     root.innerHTML = `<div class="ob-inner"></div>`;
 
     document.getElementById("root").appendChild(root);
+
+    if (!cancelable) {
+        import("./shell.js").then(({ renderShell }) => {
+            import("./sidebar.js").then(({ bindAppHeaderControls }) => {
+                renderShell();
+                bindAppHeaderControls(() => false, () => false, () => "INBOX");
+                const mainRoot = document.getElementById("root");
+                mainRoot.appendChild(root);
+            });
+        });
+    }
+
     renderOnboardingContent(root, onSuccess, cancelable);
 }
 

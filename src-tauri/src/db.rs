@@ -60,6 +60,8 @@ pub struct Email {
     pub mailbox: String,
     pub labels: String,
     pub internal_ts: i64,
+    pub uid: Option<i64>,
+    pub message_id_header: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,6 +111,8 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             mailbox TEXT NOT NULL DEFAULT 'INBOX',
             labels TEXT NOT NULL DEFAULT '',
             internal_ts INTEGER NOT NULL DEFAULT 0,
+            uid INTEGER,
+            message_id_header TEXT,
             PRIMARY KEY (id, account_id)
         );
     ")?;
@@ -166,6 +170,8 @@ pub fn init_db(conn: &Connection) -> Result<()> {
     let _ = conn.execute("ALTER TABLE emails ADD COLUMN draft_id TEXT", []);
     let _ = conn.execute("ALTER TABLE emails ADD COLUMN attachments_json TEXT NOT NULL DEFAULT '[]'", []);
     let _ = conn.execute("ALTER TABLE emails ADD COLUMN has_attachments INTEGER NOT NULL DEFAULT 0", []);
+    let _ = conn.execute("ALTER TABLE emails ADD COLUMN uid INTEGER", []);
+    let _ = conn.execute("ALTER TABLE emails ADD COLUMN message_id_header TEXT", []);
 
     // Clean up seed/test data
     let _ = conn.execute(

@@ -475,6 +475,9 @@ async function onSync() {
 function showOnboardingAndReset() {
     document.getElementById("root").innerHTML = "";
     initLang();
+    import("./ui/compose.js").then(({ resetComposeRecipientUiBound }) => {
+        resetComposeRecipientUiBound();
+    });
     showOnboarding(initializeConnectedUI);
 }
 
@@ -485,6 +488,9 @@ async function initializeConnectedUI() {
 
     bindAppHeaderControls(isComposeOpen, isSettingsOpen, () => currentMailbox);
     bindMailboxNav(async (mailbox) => {
+        if (currentMailbox !== mailbox) {
+            mailboxNextPageToken.set(currentMailbox, null);
+        }
         searchQuery = "";
         const input = document.getElementById("search-input");
         if (input) { input.value = ""; input.dispatchEvent(new Event("input")); }

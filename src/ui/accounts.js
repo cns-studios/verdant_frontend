@@ -276,7 +276,7 @@ export async function openAccountPopover(onSwitch, onAddAccount) {
     if (accounts.length > 0) {
         const label = document.createElement("div");
         label.className = "account-popover-label";
-        label.textContent = "Accounts";
+        label.textContent = t("accounts.title");
         accSection.appendChild(label);
 
         for (const acc of accounts) {
@@ -288,10 +288,10 @@ export async function openAccountPopover(onSwitch, onAddAccount) {
                 <div class="account-avatar ${acc.provider === 'imap' ? 'imap' : ''}">${escapeHtml(initials)}</div>
                 <div class="account-item-info">
                     <div class="account-item-email" title="${escapeHtml(acc.email)}">${escapeHtml(acc.email)}</div>
-                    <div class="account-item-provider">${escapeHtml(acc.provider === 'imap' ? 'IMAP' : 'Gmail')}</div>
+                    <div class="account-item-provider">${escapeHtml(acc.provider === 'imap' ? t("accounts.imap") : t("accounts.gmail"))}</div>
                 </div>
                 ${acc.is_active ? '<div class="account-active-dot"></div>' : ''}
-                ${!acc.is_active ? '<button class="account-remove-btn" title="Remove account">×</button>' : ''}
+                ${!acc.is_active ? `<button class="account-remove-btn" title="${escapeHtml(t("reading.delete"))}">×</button>` : ''}
             `;
 
             if (!acc.is_active) {
@@ -309,11 +309,11 @@ export async function openAccountPopover(onSwitch, onAddAccount) {
                 const removeBtn = item.querySelector(".account-remove-btn");
                 removeBtn?.addEventListener("click", async (e) => {
                     e.stopPropagation();
-                    if (!confirm(`Remove ${acc.email}?`)) return;
+                    if (!confirm(t("accounts.remove_confirm", { email: acc.email }))) return;
                     closeAccountPopover();
                     try {
                         await removeAccount(acc.id);
-                        showToast("Account removed");
+                        showToast(t("accounts.removed"));
                         onSwitch(null); 
                     } catch (err) {
                         showToast(String(err), "error");
@@ -337,7 +337,7 @@ export async function openAccountPopover(onSwitch, onAddAccount) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
         </svg>
-        Add account
+        ${t("accounts.add")}
     `;
     addBtn.onclick = () => {
         closeAccountPopover();
@@ -352,7 +352,7 @@ export async function openAccountPopover(onSwitch, onAddAccount) {
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
         </svg>
-        Settings
+        ${t("settings.title")}
     `;
     settingsBtn.onclick = () => {
         closeAccountPopover();
@@ -377,10 +377,10 @@ const mailIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" str
 const globeIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`;
 const serverIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`;
 
-const PROVIDERS = [
-    { id: "gmail", name: "Gmail",       icon: mailIcon,   desc: "Google OAuth" },
-    { id: "gmx",   name: "GMX",         icon: globeIcon,  desc: "IMAP / SMTP" },
-    { id: "imap",  name: "Custom SMTP", icon: serverIcon, desc: "Any mail server" },
+const PROVIDERS = () => [
+    { id: "gmail", name: t("accounts.gmail"),       icon: mailIcon,   desc: "Google OAuth" },
+    { id: "gmx",   name: t("accounts.gmx"),         icon: globeIcon,  desc: t("accounts.gmx_desc") },
+    { id: "imap",  name: t("accounts.imap_custom"), icon: serverIcon, desc: t("accounts.imap_desc") },
 ];
 
 export function openAddAccountModal(onSwitch, onAfterAdd, initialProvider = null) {
@@ -398,12 +398,12 @@ export function openAddAccountModal(onSwitch, onAfterAdd, initialProvider = null
 
     panel.innerHTML = `
         <div class="add-account-header">
-            <span class="add-account-title">Add account</span>
+            <span class="add-account-title">${t("accounts.add")}</span>
             <button class="add-account-close" id="add-account-close-btn">×</button>
         </div>
         <div class="add-account-body" id="add-account-body">
             <div class="provider-grid" id="provider-grid">
-                ${PROVIDERS.map(p => `
+                ${PROVIDERS().map(p => `
                     <div class="provider-card" data-provider="${p.id}">
                         <div class="provider-card-icon">${p.icon}</div>
                         <div class="provider-card-name">${escapeHtml(p.name)}</div>
@@ -449,13 +449,13 @@ function renderForm(provider, panel, closeModal, onSwitch, onAfterAdd) {
         area.innerHTML = `
             <div style="text-align:center; padding: 16px 0 8px;">
                 <div style="font: 400 13px 'DM Sans', sans-serif; color: var(--text-mid); margin-bottom: 14px;">
-                    Sign in with Google OAuth. A browser window will open.
+                    ${t("accounts.gmail_desc")}
                 </div>
                 <div class="add-account-error" id="add-gmail-error"></div>
             </div>
             <div class="add-account-footer">
-                <button class="verdant-btn" id="add-gmail-cancel">Cancel</button>
-                <button class="verdant-btn primary" id="add-gmail-btn">Connect Gmail</button>
+                <button class="verdant-btn" id="add-gmail-cancel">${t("accounts.cancel")}</button>
+                <button class="verdant-btn primary" id="add-gmail-btn">${t("accounts.gmail_connect")}</button>
             </div>
         `;
 
@@ -464,16 +464,16 @@ function renderForm(provider, panel, closeModal, onSwitch, onAfterAdd) {
             const btn = panel.querySelector("#add-gmail-btn");
             const errEl = panel.querySelector("#add-gmail-error");
             btn.disabled = true;
-            btn.textContent = "Connecting…";
+            btn.textContent = t("onboarding.connecting");
             errEl.classList.remove("visible");
             try {
                 const acc = await addGmailAccount();
                 closeModal();
-                showToast(`Connected ${acc.email}`);
+                showToast(t("accounts.gmail_connected", { email: acc.email }));
                 if (onAfterAdd) onAfterAdd(acc);
             } catch (err) {
                 btn.disabled = false;
-                btn.textContent = "Connect Gmail";
+                btn.textContent = t("accounts.gmail_connect");
                 errEl.textContent = String(err);
                 errEl.classList.add("visible");
             }
@@ -485,22 +485,22 @@ function renderForm(provider, panel, closeModal, onSwitch, onAfterAdd) {
         area.innerHTML = `
             <div class="add-account-form" id="gmx-form">
                 <div class="add-account-field">
-                    <label>GMX Email</label>
+                    <label>${t("accounts.email")}</label>
                     <input id="gmx-email" type="email" placeholder="you@gmx.com" autocomplete="email">
                 </div>
                 <div class="add-account-field">
-                    <label>Display Name (optional)</label>
+                    <label>${t("accounts.display_name")}</label>
                     <input id="gmx-name" type="text" placeholder="Your Name">
                 </div>
                 <div class="add-account-field">
-                    <label>Password</label>
+                    <label>${t("accounts.password")}</label>
                     <input id="gmx-password" type="password" placeholder="GMX password">
                 </div>
                 <div class="add-account-error" id="gmx-error"></div>
                 <div class="add-account-footer">
-                    <button class="verdant-btn" id="gmx-cancel">Cancel</button>
-                    <button class="verdant-btn" id="gmx-test">Test</button>
-                    <button class="verdant-btn primary" id="gmx-save">Add GMX Account</button>
+                    <button class="verdant-btn" id="gmx-cancel">${t("accounts.cancel")}</button>
+                    <button class="verdant-btn" id="gmx-test">${t("accounts.test")}</button>
+                    <button class="verdant-btn primary" id="gmx-save">${t("accounts.add")}</button>
                 </div>
             </div>
         `;
@@ -512,32 +512,32 @@ function renderForm(provider, panel, closeModal, onSwitch, onAfterAdd) {
         area.innerHTML = `
             <div class="add-account-form">
                 <div class="add-account-field">
-                    <label>Email Address</label>
+                    <label>${t("accounts.email")}</label>
                     <input id="imap-email" type="email" placeholder="you@example.com" autocomplete="email">
                 </div>
                 <div class="add-account-field">
-                    <label>Display Name (optional)</label>
+                    <label>${t("accounts.display_name")}</label>
                     <input id="imap-name" type="text" placeholder="Your Name">
                 </div>
                 <div class="add-account-field">
-                    <label>Username (if different from email)</label>
-                    <input id="imap-username" type="text" placeholder="Leave blank to use email">
+                    <label>${t("accounts.username_optional")}</label>
+                    <input id="imap-username" type="text" placeholder="${t("accounts.username_placeholder")}">
                 </div>
                 <div class="add-account-field">
-                    <label>Password</label>
+                    <label>${t("accounts.password")}</label>
                     <input id="imap-password" type="password" placeholder="Password or app password">
                 </div>
-                <span class="add-account-advanced-toggle" id="imap-advanced-toggle">▸ Server settings</span>
+                <span class="add-account-advanced-toggle" id="imap-advanced-toggle">▸ ${t("accounts.server_settings")}</span>
                 <div class="add-account-advanced" id="imap-advanced">
                     <div class="add-account-field">
-                        <label>IMAP Host</label>
+                        <label>${t("accounts.imap_host")}</label>
                         <div class="add-account-row">
                             <input id="imap-host" type="text" placeholder="imap.example.com">
                             <input id="imap-port" type="number" placeholder="993" value="993">
                         </div>
                     </div>
                     <div class="add-account-field">
-                        <label>SMTP Host</label>
+                        <label>${t("accounts.smtp_host")}</label>
                         <div class="add-account-row">
                             <input id="smtp-host" type="text" placeholder="smtp.example.com">
                             <input id="smtp-port" type="number" placeholder="587" value="587">
@@ -546,9 +546,9 @@ function renderForm(provider, panel, closeModal, onSwitch, onAfterAdd) {
                 </div>
                 <div class="add-account-error" id="imap-error"></div>
                 <div class="add-account-footer">
-                    <button class="verdant-btn" id="imap-cancel">Cancel</button>
-                    <button class="verdant-btn" id="imap-test">Test</button>
-                    <button class="verdant-btn primary" id="imap-save">Add Account</button>
+                    <button class="verdant-btn" id="imap-cancel">${t("accounts.cancel")}</button>
+                    <button class="verdant-btn" id="imap-test">${t("accounts.test")}</button>
+                    <button class="verdant-btn primary" id="imap-save">${t("accounts.add")}</button>
                 </div>
             </div>
         `;
@@ -558,7 +558,7 @@ function renderForm(provider, panel, closeModal, onSwitch, onAfterAdd) {
             const adv = panel.querySelector("#imap-advanced");
             const toggle = panel.querySelector("#imap-advanced-toggle");
             adv.classList.toggle("open");
-            toggle.textContent = adv.classList.contains("open") ? "▾ Server settings" : "▸ Server settings";
+            toggle.textContent = adv.classList.contains("open") ? `▾ ${t("accounts.server_settings")}` : `▸ ${t("accounts.server_settings")}`;
         };
 
         
@@ -608,13 +608,13 @@ function bindImapForm(panel, prefix, closeModal, onSwitch, onAfterAdd) {
         const payload = collectImapPayload(panel, prefix);
 
         if (!payload.email || !payload.password) {
-            errEl.textContent = "Email and password are required.";
+            errEl.textContent = t("accounts.required");
             errEl.classList.add("visible");
             return;
         }
 
         btn.disabled = true;
-        btn.textContent = "Testing…";
+        btn.textContent = t("accounts.testing");
         errEl.classList.remove("visible");
 
         try {
@@ -623,7 +623,7 @@ function bindImapForm(panel, prefix, closeModal, onSwitch, onAfterAdd) {
             errEl.style.color = "var(--green)";
             errEl.style.background = "var(--green-pale)";
             errEl.style.borderColor = "var(--green-muted)";
-            errEl.textContent = "Connection successful!";
+            errEl.textContent = t("accounts.success");
             errEl.classList.add("visible");
         } catch (err) {
             errEl.style.color = "";
@@ -633,7 +633,7 @@ function bindImapForm(panel, prefix, closeModal, onSwitch, onAfterAdd) {
             errEl.classList.add("visible");
         } finally {
             btn.disabled = false;
-            btn.textContent = "Test";
+            btn.textContent = t("accounts.test");
         }
     };
 
@@ -643,26 +643,26 @@ function bindImapForm(panel, prefix, closeModal, onSwitch, onAfterAdd) {
         const payload = collectImapPayload(panel, prefix);
 
         if (!payload.email || !payload.password) {
-            errEl.textContent = "Email and password are required.";
+            errEl.textContent = t("accounts.required");
             errEl.classList.add("visible");
             return;
         }
 
         btn.disabled = true;
-        btn.textContent = "Adding…";
+        btn.textContent = t("accounts.adding");
         errEl.classList.remove("visible");
 
         try {
             const addFn = prefix === "gmx" ? addGmxAccount : addImapAccount;
             const acc = await addFn(payload);
             closeModal();
-            showToast(`Connected ${acc.email}`);
+            showToast(t("accounts.gmail_connected", { email: acc.email }));
             if (onAfterAdd) onAfterAdd(acc);
         } catch (err) {
             errEl.textContent = String(err);
             errEl.classList.add("visible");
             btn.disabled = false;
-            btn.textContent = prefix === "gmx" ? "Add GMX Account" : "Add Account";
+            btn.textContent = t("accounts.add");
         }
     };
 }

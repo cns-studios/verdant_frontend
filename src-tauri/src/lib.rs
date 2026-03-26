@@ -98,6 +98,7 @@ pub fn run() {
             commands::mail::get_inbox_threads,
             commands::mail::get_thread_messages,
             commands::mail::mark_thread_read,
+            commands::mail::remove_label,
             
             commands::compose::send_email,
             commands::compose::save_draft,

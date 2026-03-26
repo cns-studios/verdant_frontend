@@ -152,8 +152,6 @@ pub fn extract_body(payload: &Value) -> Option<String> {
         }
     }
     return plain_fallback;
-
-    None
 }
 
 pub fn collect_attachments(payload: &Value, out: &mut Vec<AttachmentMeta>) {
@@ -203,6 +201,7 @@ pub fn mailbox_label(mailbox: &str) -> Option<&'static str> {
         "INBOX" => Some("INBOX"),
         "SENT" => Some("SENT"),
         "DRAFT" => Some("DRAFT"),
+        "TRASH" => Some("TRASH"),
         _ => None,
     }
 }

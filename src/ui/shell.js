@@ -64,6 +64,10 @@ export function renderShell() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             ${t("sidebar.drafts")}
           </div>
+          <div class="nav-item" data-mailbox="TRASH">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+            ${t("sidebar.trash")}
+          </div>
         </div>
 
         <div class="sidebar-footer">
@@ -357,6 +361,12 @@ function injectShellStyles() {
     .send-btn svg { width:13px; height:13px; }
     @keyframes fadeSlideIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
     .email-item { animation:fadeSlideIn 0.2s ease both; }
+    .reading-labels { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
+    .email-label-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 500; background: var(--surface2); color: var(--text-mid); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border); cursor: pointer; }
+    .email-label-badge:hover { background: var(--surface); color: var(--text); }
+    .label-remove-btn { border: none; background: transparent; color: var(--text-muted); font-size: 12px; line-height: 1; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; }
+    .label-remove-btn:hover { color: #8a2e2e; }
+    .compose-format-btn.active { background: var(--green-pale); color: var(--green); border-color: var(--green-muted); }
   `;
   document.head.appendChild(style);
 }
