@@ -1,0 +1,225 @@
+.account-popover-backdrop {
+    position: fixed; inset: 0; z-index: 1900;
+}
+.account-popover {
+    position: fixed;
+    bottom: 72px;
+    left: 12px;
+    width: 260px;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 16px 40px rgba(30,33,25,.18);
+    z-index: 2000;
+    overflow: hidden;
+    transform-origin: bottom left;
+    animation: popover-in .16s cubic-bezier(.34,1.56,.64,1) forwards;
+}
+@keyframes popover-in {
+    from { opacity: 0; transform: scale(.94) translateY(8px); }
+    to   { opacity: 1; transform: scale(1)  translateY(0); }
+}
+.account-popover-section {
+    padding: 6px;
+    border-bottom: 1px solid var(--border);
+}
+.account-popover-section:last-child { border-bottom: 0; }
+.account-popover-label {
+    font: 500 10px 'DM Sans', sans-serif;
+    letter-spacing: .6px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: 6px 8px 4px;
+}
+.account-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background .1s;
+}
+.account-item:hover { background: var(--surface2); }
+.account-item.is-active { background: var(--green-pale); }
+.account-avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--green-mid), var(--green-light));
+    display: flex; align-items: center; justify-content: center;
+    font: 600 10px 'DM Sans', sans-serif;
+    color: white; flex-shrink: 0;
+}
+.account-avatar.imap {
+    background: linear-gradient(135deg, #7a6d5a, #a89880);
+}
+.account-item-info { flex: 1; min-width: 0; }
+.account-item-email {
+    font: 500 12px 'DM Sans', sans-serif;
+    color: var(--text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.account-item-provider {
+    font: 400 10px 'DM Sans', sans-serif;
+    color: var(--text-muted);
+    text-transform: capitalize;
+}
+.account-active-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    flex-shrink: 0;
+}
+.account-remove-btn {
+    width: 20px; height: 20px;
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: 5px;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; line-height: 1;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity .1s, background .1s, color .1s;
+}
+.account-item:hover .account-remove-btn { opacity: 1; }
+.account-remove-btn:hover { background: #f3dfdf; color: #8a2e2e; border-color: #ddb5b5; }
+.account-popover-action {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font: 500 12px 'DM Sans', sans-serif;
+    color: var(--text-mid);
+    transition: background .1s, color .1s;
+}
+.account-popover-action:hover { background: var(--surface2); color: var(--text); }
+.account-popover-action svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+.add-account-overlay {
+    position: fixed; inset: 0;
+    background: rgba(30,33,25,.38);
+    backdrop-filter: blur(3px);
+    z-index: 2100;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+    opacity: 0;
+    animation: fade-in .18s ease forwards;
+}
+@keyframes fade-in { to { opacity: 1; } }
+.add-account-panel {
+    width: min(480px, 100%);
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 22px 52px rgba(37,35,31,.2);
+    overflow: hidden;
+    transform: translateY(12px) scale(.98);
+    animation: panel-in .2s cubic-bezier(.34,1.56,.64,1) forwards;
+}
+@keyframes panel-in { to { transform: translateY(0) scale(1); } }
+.add-account-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--surface);
+}
+.add-account-title {
+    font: 500 15px 'Fraunces', serif;
+    color: var(--text);
+    letter-spacing: -.2px;
+}
+.add-account-close {
+    width: 26px; height: 26px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    border-radius: 7px;
+    cursor: pointer;
+    color: var(--text-muted);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+}
+.add-account-close:hover { background: var(--white); color: var(--text); }
+.add-account-body { padding: 20px; }
+.provider-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+.provider-card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 12px;
+    cursor: pointer;
+    transition: border-color .12s, box-shadow .12s, background .12s;
+    background: var(--white);
+}
+.provider-card:hover {
+    border-color: var(--green-light);
+    box-shadow: 0 2px 10px rgba(74,94,69,.09);
+}
+.provider-card.selected {
+    border-color: var(--green);
+    background: var(--green-pale);
+}
+.provider-card.disabled {
+    opacity: .5; cursor: not-allowed;
+}
+.provider-card-icon { font-size: 22px; margin-bottom: 6px; }
+.provider-card-name {
+    font: 600 12px 'DM Sans', sans-serif;
+    color: var(--text);
+}
+.provider-card-desc {
+    font: 400 11px 'DM Sans', sans-serif;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+.add-account-form { display: grid; gap: 10px; }
+.add-account-field { display: grid; gap: 4px; }
+.add-account-field label {
+    font: 500 11px 'DM Sans', sans-serif;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+}
+.add-account-field input {
+    height: 36px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    padding: 0 10px;
+    font: 400 13px 'DM Sans', sans-serif;
+    color: var(--text);
+    outline: none;
+    transition: border-color .12s;
+}
+.add-account-field input:focus { border-color: var(--green-light); }
+.add-account-row { display: grid; grid-template-columns: 1fr 90px; gap: 8px; }
+.add-account-footer {
+    display: flex; gap: 8px; justify-content: flex-end;
+    margin-top: 16px;
+}
+.add-account-error {
+    font: 400 12px 'DM Sans', sans-serif;
+    color: #8a3b3b;
+    background: #f9ecec;
+    border: 1px solid #dcb9b9;
+    border-radius: 8px;
+    padding: 8px 10px;
+    display: none;
+}
+.add-account-error.visible { display: block; }
+.add-account-advanced-toggle {
+    font: 500 12px 'DM Sans', sans-serif;
+    color: var(--green);
+    cursor: pointer;
+    margin-top: 4px;
+    display: inline-block;
+}
+.add-account-advanced { display: none; margin-top: 8px; }
+.add-account-advanced.open { display: grid; gap: 10px; }

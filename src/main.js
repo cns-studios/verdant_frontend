@@ -5,7 +5,11 @@ import { loadHotkeys, saveHotkeys, normalizeCombo, eventCombo, canRunHotkey } fr
 import { showToast } from "./lib/toast.js";
 import { escapeHtml, sanitizeUnicodeNoise, formatListDate, mailboxTitle } from "./lib/format.js";
 import { syncMailboxInBackground, startPeriodicSync, mailboxNextPageToken, knownInboxIds, setKnownInboxIds } from "./lib/sync.js";
-import { ensureStyles } from "./ui/styles.js";
+import "./ui/styles/dynamic.css";
+import "./ui/styles/shell.css";
+import "./ui/styles/onboarding.css";
+import "./ui/styles/accounts.css";
+import "./ui/styles/updates.css";
 import { renderShell } from "./ui/shell.js";
 import { showOnboarding } from "./ui/onboarding.js";
 import {
@@ -46,32 +50,6 @@ let hotkeys = loadHotkeys();
 
 
 
-function injectUpdateModalStyles() {
-    if (document.getElementById("verdant-update-modal-styles")) return;
-    const style = document.createElement("style");
-    style.id = "verdant-update-modal-styles";
-    style.textContent = `
-        .update-toast { position:fixed; bottom:24px; right:24px; width:min(360px, calc(100vw - 48px)); background:var(--surface); border:1px solid var(--border); border-radius:14px; box-shadow:0 16px 40px rgba(30,33,25,.18); padding:18px 18px 14px; z-index:3000; transform:translateY(110%); opacity:0; transition:transform .32s cubic-bezier(.34,1.56,.64,1), opacity .24s ease; display:flex; flex-direction:column; gap:12px; }
-        .update-toast.open { transform:translateY(0); opacity:1; }
-        .update-toast-header { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
-        .update-toast-title { font:500 14px 'Fraunces', serif; color:var(--text); letter-spacing:-.2px; }
-        .update-toast-sub { font:400 12px 'DM Sans', sans-serif; color:var(--text-muted); margin-top:2px; }
-        .update-toast-close { width:24px; height:24px; border:1px solid var(--border); background:var(--surface2); border-radius:6px; cursor:pointer; color:var(--text-muted); display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
-        .update-toast-close:hover { background:var(--white); color:var(--text); }
-        .update-toast-actions { display:flex; gap:8px; justify-content:flex-end; }
-        .update-toast-btn { padding:7px 14px; border-radius:8px; border:1px solid var(--border); background:var(--surface2); color:var(--text); font:500 12px 'DM Sans', sans-serif; cursor:pointer; }
-        .update-toast-btn.primary { background:var(--green); color:#fff; border-color:var(--green); }
-        .update-toast-btn:disabled { opacity:.6; cursor:default; }
-        .update-progress-wrap { display:none; flex-direction:column; gap:8px; }
-        .update-progress-wrap.visible { display:flex; }
-        .update-progress-label { font:400 12px 'DM Sans', sans-serif; color:var(--text-muted); }
-        .update-progress-track { height:6px; border-radius:999px; background:var(--surface2); overflow:hidden; }
-        .update-progress-bar { height:100%; border-radius:999px; background:var(--green); width:0%; transition:width .4s ease; }
-        .update-progress-bar.indeterminate { width:100% !important; background:linear-gradient(90deg, var(--surface2) 0%, var(--green) 40%, var(--green-light) 60%, var(--surface2) 100%); background-size:200% 100%; animation:verdant-shimmer 1.4s linear infinite; }
-        @keyframes verdant-shimmer { 0% { background-position:200% 0; } 100% { background-position:-200% 0; } }
-    `;
-    document.head.appendChild(style);
-}
 
 async function runStartupUpdateCheck() {
     try {
@@ -79,7 +57,6 @@ async function runStartupUpdateCheck() {
         const info = await checkForUpdates(channel);
         if (!info?.updateAvailable) return;
 
-        injectUpdateModalStyles();
         const toast = document.createElement("div");
         toast.className = "update-toast";
         toast.innerHTML = `
@@ -545,7 +522,6 @@ async function initializeConnectedUI() {
 
 
 document.addEventListener("DOMContentLoaded", async () => {
-    ensureStyles();
     initLang();
     await ensureContactsLoaded().catch(() => {});
 
